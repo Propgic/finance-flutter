@@ -1,0 +1,27 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/api/api_client.dart';
+
+class TeamRepo {
+  final ApiClient api;
+  TeamRepo(this.api);
+
+  Future<List<dynamic>> list() async {
+    final d = await api.get('/team');
+    if (d is List) return d;
+    if (d is Map && d['data'] is List) return d['data'];
+    return const [];
+  }
+
+  Future<Map<String, dynamic>> get(String id) async {
+    final d = await api.get('/team/$id');
+    return Map<String, dynamic>.from(d as Map);
+  }
+
+  Future<void> create(Map<String, dynamic> body) async => api.post('/team', data: body);
+  Future<void> update(String id, Map<String, dynamic> body) async => api.put('/team/$id', data: body);
+  Future<void> delete(String id) async => api.delete('/team/$id');
+  Future<void> toggleStatus(String id) async => api.patch('/team/$id/status');
+  Future<void> resetPassword(String id, String newPassword) async => api.post('/team/$id/reset-password', data: {'newPassword': newPassword});
+}
+
+final teamRepoProvider = Provider<TeamRepo>((ref) => TeamRepo(ref.read(apiClientProvider)));
