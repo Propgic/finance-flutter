@@ -1,39 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
-import '../data/report_repo.dart';
 
 const _loanTypeFeatureMap = {
-  'PERSONAL': 'enablePersonalLoan',
-  'GOLD': 'enableGoldLoan',
-  'GROUP': 'enableGroupLoan',
-  'VEHICLE': 'enableVehicleLoan',
-  'PROPERTY': 'enableMortgage',
-  'BUSINESS': 'enableBusinessLoan',
-  'AGRICULTURE': 'enableAgricultureLoan',
-  'EDUCATION': 'enableEducationLoan',
-  'DAILY': 'enableDailyLoan',
-  'WEEKLY': 'enableWeeklyLoan',
+  'PERSONAL':'enablePersonalLoan','GOLD':'enableGoldLoan','GROUP':'enableGroupLoan',
+  'VEHICLE':'enableVehicleLoan','PROPERTY':'enableMortgage','BUSINESS':'enableBusinessLoan',
+  'AGRICULTURE':'enableAgricultureLoan','EDUCATION':'enableEducationLoan','DAILY':'enableDailyLoan','WEEKLY':'enableWeeklyLoan',
 };
-
 const _loanTypeLabels = {
-  'PERSONAL': 'Personal',
-  'GOLD': 'Gold',
-  'GROUP': 'Group',
-  'VEHICLE': 'Vehicle',
-  'PROPERTY': 'Mortgage',
-  'BUSINESS': 'Business',
-  'AGRICULTURE': 'Agriculture',
-  'EDUCATION': 'Education',
-  'DAILY': 'Daily',
-  'WEEKLY': 'Weekly',
+  'PERSONAL':'Personal','GOLD':'Gold','GROUP':'Group','VEHICLE':'Vehicle','PROPERTY':'Mortgage',
+  'BUSINESS':'Business','AGRICULTURE':'Agriculture','EDUCATION':'Education','DAILY':'Daily','WEEKLY':'Weekly',
 };
-
-const _loanStatuses = ['ACTIVE', 'CLOSED', 'DEFAULTED', 'PENDING'];
+const _statuses = ['PENDING','APPROVED','ACTIVE','CLOSED','REJECTED','DEFAULTED'];
 
 class LoanReportPage extends ConsumerStatefulWidget {
   const LoanReportPage({super.key});
@@ -42,150 +24,65 @@ class LoanReportPage extends ConsumerStatefulWidget {
 }
 
 class _LoanReportPageState extends ConsumerState<LoanReportPage> {
+  String? _type;
+  String? _status;
   DateTime? _from;
   DateTime? _to;
-  String? _typeFilter;
-  String? _statusFilter;
-  Future<Map<String, dynamic>>? _future;
+  List<Map<String,dynamic>> _data = const [];
+  bool _loading = true;
+  Object? _error;
 
   @override
-  void initState() {
-    super.initState();
-    _from = DateTime.now().subtract(const Duration(days: 30));
-    _to = DateTime.now();
-    _load();
-  }
+  void initState() { super.initState(); _fetch(); }
 
-  void _load() {
-    final params = <String, dynamic>{};
-    if (_from != null) params['fromDate'] = formatInputDate(_from!);
-    if (_to != null) params['toDate'] = formatInputDate(_to!);
-    if (_typeFilter != null) params['loanType'] = _typeFilter;
-    if (_statusFilter != null) params['status'] = _statusFilter;
-    _future = ref.read(reportRepoProvider).fetch('loans', params: params.isEmpty ? null : params);
-    setState(() {});
+  Future<void> _fetch() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final q = <String,dynamic>{};
+      if (_type != null) q['loanType'] = _type;
+      if (_status != null) q['status'] = _status;
+      if (_from != null) q['fromDate'] = formatInputDate(_from!);
+      if (_to != null) q['toDate'] = formatInputDate(_to!);
+      final api = ref.read(apiClientProvider);
+      final d = await api.get('/reports/loans', query: q);
+      final list = d is List ? d : (d is Map && d['data'] is List ? d['data'] : const []);
+      setState(() => _data = (list as List).map((e) => Map<String,dynamic>.from(e as Map)).toList());
+    } catch (e) { setState(() => _error = e); }
+    finally { if (mounted) setState(() => _loading = false); }
   }
 
   @override
   Widget build(BuildContext context) {
-    final org = ref.watch(authProvider).org;
-    final typeOptions = _loanTypeLabels.entries.where((e) {
-      final flag = _loanTypeFeatureMap[e.key];
-      return flag == null || org?.feature(flag) == true;
-    }).toList();
+    final features = ref.watch(authProvider).org?.features ?? const {};
+    final types = _loanTypeLabels.entries.where((e) => features[_loanTypeFeatureMap[e.key]] == true || _loanTypeFeatureMap[e.key] == null).toList();
+    final totalDisbursed = _data.fold<num>(0, (s, r) => s + toNum(r['disbursed']));
+    final totalOutstanding = _data.fold<num>(0, (s, r) => s + toNum(r['outstanding']));
 
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/reports');
-            }
-          },
-        ),
-        title: const Text('Loan Report'),
-        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
-      ),
+      appBar: AppBar(title: const Text('Loan Report')),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Expanded(child: _dateBtn('From', _from, (d) { setState(() => _from = d); _load(); })),
-                const SizedBox(width: 8),
-                Expanded(child: _dateBtn('To', _to, (d) { setState(() => _to = d); _load(); })),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String?>(
-                    initialValue: _typeFilter,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Type',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                    ),
-                    items: [
-                      const DropdownMenuItem<String?>(value: null, child: Text('All Types')),
-                      ...typeOptions.map((e) => DropdownMenuItem<String?>(value: e.key, child: Text(e.value))),
-                    ],
-                    onChanged: (v) { setState(() => _typeFilter = v); _load(); },
+          _filterBar(types),
+          if (_loading) const Expanded(child: LoadingView())
+          else if (_error != null) Expanded(child: ErrorView(message: _error.toString(), onRetry: _fetch))
+          else Expanded(
+            child: RefreshIndicator(
+              onRefresh: _fetch,
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                children: [
+                  if (_data.isNotEmpty) Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(children: [
+                      Expanded(child: _sumCard('Total Disbursed', formatCurrency(totalDisbursed), '${_data.length} loans', AppColors.primary)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _sumCard('Outstanding', formatCurrency(totalOutstanding), '', AppColors.danger)),
+                    ]),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButtonFormField<String?>(
-                    initialValue: _statusFilter,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Status',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                    ),
-                    items: [
-                      const DropdownMenuItem<String?>(value: null, child: Text('All Statuses')),
-                      ..._loanStatuses.map((s) => DropdownMenuItem<String?>(value: s, child: Text(s))),
-                    ],
-                    onChanged: (v) { setState(() => _statusFilter = v); _load(); },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: FutureBuilder<Map<String, dynamic>>(
-              future: _future,
-              builder: (ctx, snap) {
-                if (snap.connectionState == ConnectionState.waiting) return const LoadingView();
-                if (snap.hasError) return ErrorView(message: snap.error.toString(), onRetry: _load);
-                final data = snap.data ?? {};
-                final list = (data['data'] as List?) ?? const [];
-                final totalDisbursed = list.fold<double>(0, (s, e) => s + ((e is Map ? (e['disbursed'] ?? 0) : 0) as num).toDouble());
-                final totalOutstanding = list.fold<double>(0, (s, e) => s + ((e is Map ? (e['outstanding'] ?? 0) : 0) as num).toDouble());
-                return ListView(
-                  children: [
-                    if (list.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-                        child: Row(
-                          children: [
-                            Expanded(child: _summaryCard('Total Disbursed', formatCurrency(totalDisbursed), AppColors.primary, subtitle: '${list.length} loans')),
-                            const SizedBox(width: 8),
-                            Expanded(child: _summaryCard('Total Outstanding', formatCurrency(totalOutstanding), Colors.red)),
-                          ],
-                        ),
-                      ),
-                    if (list.isEmpty)
-                      const Padding(padding: EdgeInsets.all(24), child: EmptyView(message: 'No data for selected filters'))
-                    else
-                      Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Card(
-                          margin: EdgeInsets.zero,
-                          child: Column(
-                            children: [
-                              for (int i = 0; i < list.length; i++) ...[
-                                _loanTile(Map<String, dynamic>.from(list[i] as Map)),
-                                if (i < list.length - 1) const Divider(height: 1),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              },
+                  if (_data.isEmpty) const EmptyView(message: 'No data for selected filters') else ..._data.map(_loanTile),
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
           ),
         ],
@@ -193,67 +90,58 @@ class _LoanReportPageState extends ConsumerState<LoanReportPage> {
     );
   }
 
-  Widget _summaryCard(String label, String value, Color color, {String? subtitle}) {
-    return Card(
-      margin: EdgeInsets.zero,
-      color: color.withValues(alpha: 0.08),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: TextStyle(fontSize: 12, color: color)),
-            const SizedBox(height: 4),
-            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color)),
-            if (subtitle != null) Text(subtitle, style: TextStyle(fontSize: 11, color: color.withValues(alpha: 0.8))),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _filterBar(List<MapEntry<String,String>> types) => Container(
+    padding: const EdgeInsets.all(10),
+    color: Colors.white,
+    child: Wrap(spacing: 8, runSpacing: 8, children: [
+      _dropdown('Type', _type, [const DropdownMenuItem(value: null, child: Text('All Types')), ...types.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))], (v) { _type = v; _fetch(); }),
+      _dropdown('Status', _status, [const DropdownMenuItem(value: null, child: Text('All Statuses')), ..._statuses.map((s) => DropdownMenuItem(value: s, child: Text(s)))], (v) { _status = v; _fetch(); }),
+      _dateBtn('From', _from, (d) { _from = d; _fetch(); }),
+      _dateBtn('To', _to, (d) { _to = d; _fetch(); }),
+    ]),
+  );
 
-  Widget _loanTile(Map<String, dynamic> l) {
-    final type = l['type']?.toString() ?? '';
-    final typeLabel = _loanTypeLabels[type] ?? type;
-    final status = l['status']?.toString() ?? '';
-    return ListTile(
+  Widget _dropdown(String label, String? value, List<DropdownMenuItem<String?>> items, ValueChanged<String?> on) => SizedBox(
+    width: 160,
+    child: DropdownButtonFormField<String?>(
+      initialValue: value,
+      decoration: InputDecoration(labelText: label, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+      items: items,
+      onChanged: on,
+    ),
+  );
+
+  Widget _dateBtn(String label, DateTime? v, ValueChanged<DateTime> on) => OutlinedButton.icon(
+    onPressed: () async {
+      final d = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime.now(), initialDate: v ?? DateTime.now());
+      if (d != null) on(d);
+    },
+    icon: const Icon(Icons.calendar_today, size: 14),
+    label: Text('$label: ${v == null ? "-" : formatDate(v)}', style: const TextStyle(fontSize: 12)),
+  );
+
+  Widget _sumCard(String label, String value, String sub, Color color) => Card(
+    color: color.withValues(alpha: 0.08),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: color.withValues(alpha: 0.3))),
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: TextStyle(fontSize: 11, color: color)),
+        Text(value, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color)),
+        if (sub.isNotEmpty) Text(sub, style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.7))),
+      ]),
+    ),
+  );
+
+  Widget _loanTile(Map<String,dynamic> r) => Card(
+    child: ListTile(
       dense: true,
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              l['customer']?.toString() ?? '-',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-          Text(formatCurrency(l['outstanding']), style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.red)),
-        ],
-      ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${l['loanNumber'] ?? '-'} • $typeLabel • $status', style: const TextStyle(fontSize: 12)),
-            const SizedBox(height: 2),
-            Text(
-              'Principal ${formatCurrency(l['principal'])} • Disbursed ${formatCurrency(l['disbursed'])} • ${formatDate(l['date'])}',
-              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _dateBtn(String label, DateTime? v, void Function(DateTime) on) {
-    return OutlinedButton.icon(
-      onPressed: () async {
-        final d = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime.now(), initialDate: v ?? DateTime.now());
-        if (d != null) on(d);
-      },
-      icon: const Icon(Icons.calendar_today, size: 16),
-      label: Text('$label: ${v == null ? "-" : formatDate(v)}', style: const TextStyle(fontSize: 12)),
-    );
-  }
+      title: Text(r['loanNumber']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${r['customer'] ?? ''} • ${_loanTypeLabels[r['type']] ?? r['type'] ?? ''}', style: const TextStyle(fontSize: 12)),
+        Text('Principal: ${formatCurrency(r['principal'])} • Outstanding: ${formatCurrency(r['outstanding'])}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+      ]),
+      trailing: StatusChip(label: r['status']?.toString() ?? '', color: statusColor(r['status']?.toString())),
+    ),
+  );
 }
