@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api_client.dart';
 import 'auth_models.dart';
+import 'biometric_service.dart';
 
 class AuthController extends Notifier<AuthState> {
   @override
@@ -84,6 +85,8 @@ class AuthController extends Notifier<AuthState> {
     await prefs.remove('user');
     await prefs.remove('org');
     await prefs.remove('permissions');
+    // Disable biometric login on logout so next login is a full sign-in
+    await ref.read(biometricServiceProvider).disable();
     state = const AuthState(loading: false);
   }
 

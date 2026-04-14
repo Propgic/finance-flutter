@@ -7,6 +7,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../data/savings_repo.dart';
 import '../../app_shell.dart';
+import '../../../core/widgets/app_bottom_nav.dart';
 
 class SavingsListPage extends ConsumerStatefulWidget {
   const SavingsListPage({super.key});
@@ -57,6 +58,7 @@ class _SavingsListPageState extends ConsumerState<SavingsListPage> {
     final canCreate = ref.watch(authProvider).hasPermission('savings.create');
     return Scaffold(
       drawer: const AppDrawer(),
+      bottomNavigationBar: const AppBottomNav(),
       appBar: AppBar(
         title: const Text('Savings'),
         leading: Builder(builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer())),

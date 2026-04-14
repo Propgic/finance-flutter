@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
@@ -10,6 +11,7 @@ class ReportScaffold extends ConsumerStatefulWidget {
   final String endpoint;
   final bool showDateRange;
   final Map<String, dynamic>? extraParams;
+  final List<Widget> Function(BuildContext)? filtersBuilder;
   final Widget Function(BuildContext, Map<String, dynamic>) bodyBuilder;
   const ReportScaffold({
     super.key,
@@ -18,6 +20,7 @@ class ReportScaffold extends ConsumerStatefulWidget {
     required this.bodyBuilder,
     this.showDateRange = true,
     this.extraParams,
+    this.filtersBuilder,
   });
   @override
   ConsumerState<ReportScaffold> createState() => _ReportScaffoldState();
@@ -46,10 +49,22 @@ class _ReportScaffoldState extends ConsumerState<ReportScaffold> {
     setState(() {});
   }
 
+  void reload() => _load();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/reports');
+            }
+          },
+        ),
         title: Text(widget.title),
         actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
       ),
@@ -64,6 +79,16 @@ class _ReportScaffoldState extends ConsumerState<ReportScaffold> {
                   const SizedBox(width: 8),
                   Expanded(child: _dateBtn('To', _to, (d) { _to = d; _load(); })),
                 ],
+              ),
+            ),
+          if (widget.filtersBuilder != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Row(
+                children: widget.filtersBuilder!(context)
+                    .expand((w) => [Expanded(child: w), const SizedBox(width: 8)])
+                    .toList()
+                  ..removeLast(),
               ),
             ),
           Expanded(

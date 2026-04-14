@@ -8,6 +8,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../data/expense_repo.dart';
 import '../../app_shell.dart';
+import '../../../core/widgets/app_bottom_nav.dart';
 
 class ExpenseListPage extends ConsumerStatefulWidget {
   const ExpenseListPage({super.key});
@@ -27,6 +28,7 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage> {
     final isMgr = ref.watch(authProvider).hasRole('ORG_ADMIN') || ref.watch(authProvider).hasRole('MANAGER');
     return Scaffold(
       drawer: const AppDrawer(),
+      bottomNavigationBar: const AppBottomNav(),
       appBar: AppBar(
         title: const Text('Expenses'),
         leading: Builder(builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer())),

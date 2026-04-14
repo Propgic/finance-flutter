@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/common.dart';
 import '../data/customer_repo.dart';
 import '../../app_shell.dart';
+import '../../../core/widgets/app_bottom_nav.dart';
 
 class CustomerListPage extends ConsumerStatefulWidget {
   const CustomerListPage({super.key});
@@ -76,6 +77,7 @@ class _CustomerListPageState extends ConsumerState<CustomerListPage> {
     final isAdmin = ref.watch(authProvider).hasRole('ORG_ADMIN');
     return Scaffold(
       drawer: const AppDrawer(),
+      bottomNavigationBar: const AppBottomNav(),
       appBar: AppBar(
         title: const Text('Customers'),
         leading: Builder(

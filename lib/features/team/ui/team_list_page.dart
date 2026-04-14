@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/common.dart';
 import '../data/team_repo.dart';
 import '../../app_shell.dart';
+import '../../../core/widgets/app_bottom_nav.dart';
 
 final teamListProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async => ref.read(teamRepoProvider).list());
 
@@ -18,6 +19,7 @@ class TeamListPage extends ConsumerWidget {
     final canCreate = ref.watch(authProvider).hasPermission('team.create');
     return Scaffold(
       drawer: const AppDrawer(),
+      bottomNavigationBar: const AppBottomNav(),
       appBar: AppBar(
         title: const Text('Team'),
         leading: Builder(builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer())),

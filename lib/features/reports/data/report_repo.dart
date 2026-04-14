@@ -7,7 +7,9 @@ class ReportRepo {
 
   Future<Map<String, dynamic>> fetch(String path, {Map<String, dynamic>? params}) async {
     final d = await api.get('/reports/$path', query: params);
-    return Map<String, dynamic>.from(d as Map);
+    if (d is Map) return Map<String, dynamic>.from(d);
+    if (d is List) return {'data': d};
+    return {};
   }
 }
 

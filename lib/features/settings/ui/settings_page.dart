@@ -9,6 +9,7 @@ import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/common.dart';
 import '../../app_shell.dart';
+import '../../../core/widgets/app_bottom_nav.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -116,6 +117,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       drawer: const AppDrawer(),
+      bottomNavigationBar: const AppBottomNav(),
       appBar: AppBar(
         title: const Text('Settings'),
         leading: Builder(

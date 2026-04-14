@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/common.dart';
 import '../data/loan_group_repo.dart';
 import '../../app_shell.dart';
+import '../../../core/widgets/app_bottom_nav.dart';
 
 class LoanGroupListPage extends ConsumerStatefulWidget {
   const LoanGroupListPage({super.key});
@@ -32,6 +33,7 @@ class _LoanGroupListPageState extends ConsumerState<LoanGroupListPage> {
     final canCreate = ref.watch(authProvider).hasPermission('loans.create');
     return Scaffold(
       drawer: const AppDrawer(),
+      bottomNavigationBar: const AppBottomNav(),
       appBar: AppBar(
         title: const Text('Loan Groups'),
         leading: Builder(builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer())),

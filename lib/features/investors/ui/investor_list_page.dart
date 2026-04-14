@@ -7,6 +7,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../data/investor_repo.dart';
 import '../../app_shell.dart';
+import '../../../core/widgets/app_bottom_nav.dart';
 
 class InvestorListPage extends ConsumerStatefulWidget {
   const InvestorListPage({super.key});
@@ -26,6 +27,7 @@ class _InvestorListPageState extends ConsumerState<InvestorListPage> {
     final canCreate = ref.watch(authProvider).hasPermission('investors.create');
     return Scaffold(
       drawer: const AppDrawer(),
+      bottomNavigationBar: const AppBottomNav(),
       appBar: AppBar(
         title: const Text('Investors'),
         leading: Builder(builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer())),

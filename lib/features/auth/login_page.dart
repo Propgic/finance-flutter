@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/auth_controller.dart';
+import '../../core/auth/biometric_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
 
@@ -19,6 +20,55 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   bool _loading = false;
   bool _showPassword = false;
   List<Map<String, dynamic>>? _accounts;
+  bool _bioAvailable = false;
+  bool _bioEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBio();
+  }
+
+  Future<void> _checkBio() async {
+    final bio = ref.read(biometricServiceProvider);
+    final avail = await bio.isAvailable();
+    final enabled = await bio.hasSavedCredentials();
+    if (mounted) setState(() { _bioAvailable = avail; _bioEnabled = enabled; });
+    if (avail && enabled) {
+      // Auto-prompt biometric on load
+      Future.delayed(const Duration(milliseconds: 300), _biometricLogin);
+    }
+  }
+
+  Future<void> _biometricLogin() async {
+    if (_loading) return;
+    final bio = ref.read(biometricServiceProvider);
+    final creds = await bio.authenticate(reason: 'Sign in to Rupit Financer');
+    if (creds == null) return;
+    _phone.text = creds.phone;
+    _password.text = creds.password;
+    await _submit(fromBiometric: true);
+  }
+
+  Future<void> _maybeOfferEnableBio() async {
+    if (!_bioAvailable || _bioEnabled) return;
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enable Biometric Login?'),
+        content: const Text('Sign in instantly next time using Face ID / Fingerprint.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enable')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await ref.read(biometricServiceProvider).enable(phone: _phone.text.trim(), password: _password.text);
+      showToast('Biometric login enabled');
+    }
+  }
 
   @override
   void dispose() {
@@ -27,7 +77,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({bool fromBiometric = false}) async {
     if (_phone.text.trim().isEmpty || _password.text.isEmpty) {
       showToast('Enter phone and password', error: true);
       return;
@@ -36,7 +86,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     try {
       final ctrl = ref.read(authProvider.notifier);
       final accs = await ctrl.loginStep1(_phone.text.trim(), _password.text);
-      if (accs.isNotEmpty) setState(() => _accounts = accs);
+      if (accs.isNotEmpty) {
+        setState(() => _accounts = accs);
+      } else if (!fromBiometric) {
+        // Single-org login completed
+        await _maybeOfferEnableBio();
+      }
     } on ApiException catch (e) {
       showToast(e.message, error: true);
     } catch (e) {
@@ -54,6 +109,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             password: _password.text,
             orgId: orgId,
           );
+      await _maybeOfferEnableBio();
     } on ApiException catch (e) {
       showToast(e.message, error: true);
     } finally {
@@ -174,6 +230,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 : const Text('Sign In', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           ),
         ),
+        if (_bioAvailable && _bioEnabled) ...[
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: _loading ? null : _biometricLogin,
+            icon: const Icon(Icons.fingerprint, size: 22),
+            label: const Text('Unlock with Biometrics'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ],
       ],
     );
   }

@@ -48,6 +48,7 @@ dependencies:
   flutter_dotenv: ^6.0.0
   fl_chart: ^1.2.0
   flutter_svg: ^2.2.4
+  local_auth: ^3.0.1
 
 dev_dependencies:
   flutter_test:

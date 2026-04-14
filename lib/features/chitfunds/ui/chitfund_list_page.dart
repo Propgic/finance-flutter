@@ -6,6 +6,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../data/chitfund_repo.dart';
 import '../../app_shell.dart';
+import '../../../core/widgets/app_bottom_nav.dart';
 
 class ChitfundListPage extends ConsumerStatefulWidget {
   const ChitfundListPage({super.key});
@@ -26,6 +27,7 @@ class _ChitfundListPageState extends ConsumerState<ChitfundListPage> {
     final canCreate = ref.watch(authProvider).hasPermission('chitfunds.create');
     return Scaffold(
       drawer: const AppDrawer(),
+      bottomNavigationBar: const AppBottomNav(),
       appBar: AppBar(
         title: const Text('Chitfunds'),
         leading: Builder(builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer())),

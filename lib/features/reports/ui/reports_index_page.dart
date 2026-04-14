@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../app_shell.dart';
+import '../../../core/widgets/app_bottom_nav.dart';
 
 class ReportsIndexPage extends ConsumerWidget {
   const ReportsIndexPage({super.key});
@@ -27,6 +28,7 @@ class ReportsIndexPage extends ConsumerWidget {
     final visible = items.where((i) => auth.hasPermission(i.permission)).toList();
     return Scaffold(
       drawer: const AppDrawer(),
+      bottomNavigationBar: const AppBottomNav(),
       appBar: AppBar(
         title: const Text('Reports'),
         leading: Builder(builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer())),
@@ -43,7 +45,7 @@ class ReportsIndexPage extends ConsumerWidget {
 
   Widget _tile(BuildContext context, _ReportItem i) {
     return InkWell(
-      onTap: () => context.go(i.route),
+      onTap: () => context.push(i.route),
       borderRadius: BorderRadius.circular(12),
       child: Card(
         child: Padding(
