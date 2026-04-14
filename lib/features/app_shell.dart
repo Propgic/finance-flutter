@@ -103,30 +103,6 @@ class AppDrawer extends ConsumerWidget {
                 }).toList(),
               ),
             ),
-            const Divider(height: 1),
-            ListTile(
-              leading: Avatar(url: auth.user?.photo, name: auth.user?.name ?? '', size: 36),
-              title: Text(auth.user?.name ?? '-', maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text(auth.user?.email ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
-              onTap: () {
-                Navigator.pop(context);
-                context.go('/profile');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.logout, color: AppColors.danger),
-              title: const Text('Logout', style: TextStyle(color: AppColors.danger)),
-              onTap: () async {
-                final container = ProviderScope.containerOf(context, listen: false);
-                final router = GoRouter.of(context);
-                Navigator.pop(context);
-                final scaffoldCtx = router.routerDelegate.navigatorKey.currentContext ?? context;
-                final ok = await confirmDialog(scaffoldCtx, message: 'Sign out of your account?', destructive: true, confirmText: 'Logout');
-                if (!ok) return;
-                await container.read(authProvider.notifier).logout();
-                router.go('/login');
-              },
-            ),
             const SizedBox(height: 8),
           ],
         ),
