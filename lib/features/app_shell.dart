@@ -117,11 +117,14 @@ class AppDrawer extends ConsumerWidget {
               leading: const Icon(Icons.logout, color: AppColors.danger),
               title: const Text('Logout', style: TextStyle(color: AppColors.danger)),
               onTap: () async {
+                final container = ProviderScope.containerOf(context, listen: false);
+                final router = GoRouter.of(context);
                 Navigator.pop(context);
-                final ok = await confirmDialog(context, message: 'Sign out of your account?', destructive: true, confirmText: 'Logout');
-                if (ok) {
-                  await ref.read(authProvider.notifier).logout();
-                }
+                final scaffoldCtx = router.routerDelegate.navigatorKey.currentContext ?? context;
+                final ok = await confirmDialog(scaffoldCtx, message: 'Sign out of your account?', destructive: true, confirmText: 'Logout');
+                if (!ok) return;
+                await container.read(authProvider.notifier).logout();
+                router.go('/login');
               },
             ),
             const SizedBox(height: 8),

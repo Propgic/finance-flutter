@@ -21,7 +21,7 @@ class FinanceApp extends ConsumerWidget {
     ref.watch(authProvider);
     final router = ref.watch(routerProvider);
     return MaterialApp.router(
-      title: 'Finance',
+      title: 'Rupit Financer',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       routerConfig: router,

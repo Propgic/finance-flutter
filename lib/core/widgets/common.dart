@@ -17,10 +17,12 @@ void showToast(String msg, {bool error = false}) {
 
 String? resolveUrl(String? path) {
   if (path == null || path.isEmpty) return null;
-  if (path.startsWith('http')) return path;
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
   final base = dotenv.env['API_BASE_URL'] ?? '';
   final origin = base.replaceAll(RegExp(r'/api/?$'), '');
-  return path.startsWith('/') ? '$origin$path' : '$origin/$path';
+  // Match web: strip any leading path up through "uploads/" so only the filename remains.
+  final filename = path.replaceFirst(RegExp(r'^.*uploads/'), '');
+  return '$origin/uploads/$filename';
 }
 
 class LoadingView extends StatelessWidget {

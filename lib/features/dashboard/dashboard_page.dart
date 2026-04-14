@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,8 @@ import '../app_shell.dart';
 
 final dashboardProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final api = ref.read(apiClientProvider);
+  // Refresh user/org/permissions on every dashboard load so role updates take effect.
+  unawaited(ref.read(authProvider.notifier).refreshMe());
   final res = await api.get('/dashboard');
   return Map<String, dynamic>.from(res as Map);
 });
@@ -33,7 +36,13 @@ class DashboardPage extends ConsumerWidget {
           builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer()),
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(dashboardProvider)),
+          _NotificationsBell(),
+          IconButton(
+            tooltip: 'Profile',
+            onPressed: () => context.push('/profile'),
+            icon: Avatar(url: auth.user?.photo, name: auth.user?.name ?? '', size: 30),
+          ),
+          const SizedBox(width: 6),
         ],
       ),
       body: RefreshIndicator(
@@ -56,6 +65,7 @@ class DashboardPage extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
+        _heroStats(d, isFieldOfficer: isFieldOfficer, features: features),
         if (isFieldOfficer)
           _fieldOfficerStats(d)
         else ...[
@@ -80,6 +90,75 @@ class DashboardPage extends ConsumerWidget {
         ],
         const SizedBox(height: 24),
       ],
+    );
+  }
+
+  // === Hero gradient stats strip ===
+  Widget _heroStats(Map<String, dynamic> d, {required bool isFieldOfficer, required Map features}) {
+    final items = <_HeroStat>[
+      _HeroStat("Today's Collection", formatCurrency(d['totalCollectionsToday']),
+          icon: Icons.receipt_long, gradient: AppGradients.accent, sub: '${d['todayCollectionsCount'] ?? 0} collections'),
+      _HeroStat('Market Outstanding', formatCurrency(d['companyAmountInMarket']),
+          icon: Icons.trending_up, gradient: AppGradients.primary),
+      _HeroStat('Overdue', formatCurrency(d['totalOverdue']),
+          icon: Icons.warning_amber, gradient: AppGradients.danger),
+      if (features['enableSavings'] == true)
+        _HeroStat('Savings Pool', formatCurrency(d['totalSavingsBalance']),
+            icon: Icons.savings, gradient: AppGradients.purple),
+      _HeroStat("Today's Loans", formatCurrency(d['todayLoanIssuedAmount'] ?? d['todayDisbursedAmount']),
+          icon: Icons.payments, gradient: AppGradients.warning, sub: '${d['todayDisbursedCount'] ?? 0} loans'),
+    ];
+    return SizedBox(
+      height: 140,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (ctx, i) => _heroCard(items[i]),
+      ),
+    );
+  }
+
+  Widget _heroCard(_HeroStat s) {
+    return Container(
+      width: 180,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: s.gradient,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: s.gradient.colors.last.withValues(alpha: 0.35),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.22), borderRadius: BorderRadius.circular(10)),
+            child: Icon(s.icon, color: Colors.white, size: 18),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.label, style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.85))),
+              const SizedBox(height: 2),
+              Text(s.value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.3)),
+              if (s.sub != null)
+                Text(s.sub!, style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.75))),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -586,4 +665,58 @@ class DashboardPage extends ConsumerWidget {
     if (v.abs() >= 1000) return '${(v / 1000).toStringAsFixed(0)}K';
     return v.toStringAsFixed(0);
   }
+}
+
+final unreadCountProvider = FutureProvider.autoDispose<int>((ref) async {
+  try {
+    final api = ref.read(apiClientProvider);
+    final d = await api.get('/notifications/unread-count');
+    if (d is Map) return (d['count'] as num?)?.toInt() ?? 0;
+    return 0;
+  } catch (_) { return 0; }
+});
+
+class _NotificationsBell extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(unreadCountProvider).maybeWhen(data: (v) => v, orElse: () => 0);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          tooltip: 'Notifications',
+          icon: const Icon(Icons.notifications_outlined),
+          onPressed: () => context.push('/notifications'),
+        ),
+        if (count > 0)
+          Positioned(
+            right: 6,
+            top: 6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: AppColors.danger,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              child: Text(
+                count > 99 ? '99+' : '$count',
+                style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _HeroStat {
+  final String label;
+  final String value;
+  final String? sub;
+  final IconData icon;
+  final LinearGradient gradient;
+  _HeroStat(this.label, this.value, {this.sub, required this.icon, required this.gradient});
 }

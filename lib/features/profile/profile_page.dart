@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:dio/dio.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -200,7 +201,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           OutlinedButton.icon(
             onPressed: () async {
               final ok = await confirmDialog(context, message: 'Sign out of your account?', destructive: true, confirmText: 'Logout');
-              if (ok) await ref.read(authProvider.notifier).logout();
+              if (!ok) return;
+              await ref.read(authProvider.notifier).logout();
+              if (context.mounted) context.go('/login');
             },
             icon: const Icon(Icons.logout, color: AppColors.danger),
             label: const Text('Logout', style: TextStyle(color: AppColors.danger)),

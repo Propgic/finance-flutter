@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.finance.finance_flutter"
+    namespace = "com.rupit.financer"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -21,7 +21,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.finance.finance_flutter"
+        applicationId = "com.rupit.financer"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

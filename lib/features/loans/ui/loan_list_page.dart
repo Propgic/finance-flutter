@@ -35,6 +35,8 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
       }
     });
     _load();
+    // Refresh user permissions so the FAB visibility tracks role changes.
+    Future.microtask(() => ref.read(authProvider.notifier).refreshMe());
   }
 
   @override

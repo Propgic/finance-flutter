@@ -31,6 +31,8 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  Future<void> refreshMe() => _refreshMe();
+
   Future<void> _refreshMe() async {
     try {
       final api = ref.read(apiClientProvider);

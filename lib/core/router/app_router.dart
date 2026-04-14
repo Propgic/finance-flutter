@@ -6,6 +6,7 @@ import '../widgets/common.dart';
 import '../../features/auth/login_page.dart';
 import '../../features/dashboard/dashboard_page.dart';
 import '../../features/profile/profile_page.dart';
+import '../../features/notifications/notifications_page.dart';
 import '../../features/app_shell.dart';
 import '../../features/customers/ui/customer_list_page.dart';
 import '../../features/customers/ui/customer_form_page.dart';
@@ -80,6 +81,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/', redirect: (_, __) => '/dashboard'),
           GoRoute(path: '/dashboard', builder: (_, __) => const DashboardPage()),
           GoRoute(path: '/profile', builder: (_, __) => const ProfilePage()),
+          GoRoute(path: '/notifications', builder: (_, __) => const NotificationsPage()),
 
           GoRoute(path: '/customers', builder: (_, __) => const CustomerListPage()),
           GoRoute(path: '/customers/new', builder: (_, __) => const CustomerFormPage()),

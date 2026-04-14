@@ -1,4 +1,4 @@
-package com.finance.finance_flutter
+package com.rupit.financer
 
 import io.flutter.embedding.android.FlutterActivity
 

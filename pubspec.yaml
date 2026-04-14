@@ -1,4 +1,4 @@
-name: finance_flutter
+name: rupit_financer
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -47,6 +47,7 @@ dependencies:
   url_launcher: ^6.3.2
   flutter_dotenv: ^6.0.0
   fl_chart: ^1.2.0
+  flutter_svg: ^2.2.4
 
 dev_dependencies:
   flutter_test:
@@ -58,6 +59,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -69,6 +71,7 @@ flutter:
 
   assets:
     - .env
+    - assets/logo.svg
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -100,3 +103,12 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon.png"
+  remove_alpha_ios: true
+  adaptive_icon_background: "#2563EB"
+  adaptive_icon_foreground: "assets/icon.png"
+  min_sdk_android: 21
