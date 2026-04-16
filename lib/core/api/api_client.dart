@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -77,7 +78,7 @@ class ApiClient {
 }
 
 final dioProvider = Provider<Dio>((ref) {
-  final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://10.0.2.2:5008/api';
+  final baseUrl = 'https://api.rupit.in/api';//dotenv.env['API_BASE_URL'] ?? 'http://10.0.2.2:5008/api';
   final dio = Dio(BaseOptions(
     baseUrl: baseUrl,
     connectTimeout: const Duration(seconds: 20),
@@ -85,6 +86,19 @@ final dioProvider = Provider<Dio>((ref) {
     headers: {'Content-Type': 'application/json'},
     validateStatus: (s) => s != null && s < 500,
   ));
+
+  // API request/response logger (debug builds only)
+  if (kDebugMode) {
+    dio.interceptors.add(LogInterceptor(
+      requestHeader: true,
+      requestBody: true,
+      responseHeader: false,
+      responseBody: true,
+      error: true,
+      logPrint: (obj) => debugPrint('[API] $obj'),
+    ));
+  }
+
   dio.interceptors.add(InterceptorsWrapper(
     onRequest: (opts, handler) async {
       final prefs = await SharedPreferences.getInstance();

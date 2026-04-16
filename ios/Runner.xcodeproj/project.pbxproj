@@ -164,7 +164,6 @@
 				D66C3D595637EAE56B83C243 /* Pods-RunnerTests.release.xcconfig */,
 				92474957356B42DBFFFD72B6 /* Pods-RunnerTests.profile.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -202,6 +201,7 @@
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				4304ECB14EFCA62AD179744A /* [CP] Embed Pods Frameworks */,
+				D8F5A1B2C3E4F56789ABCDEF /* Generate Missing dSYMs */,
 			);
 			buildRules = (
 			);
@@ -363,7 +363,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
+			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build\n";
+		};
+		D8F5A1B2C3E4F56789ABCDEF /* Generate Missing dSYMs */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Generate Missing dSYMs";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate dSYMs for Swift overlay frameworks not collected by Xcode (e.g. objective_c.framework)\n# Fixes 'Upload Symbols Failed' warning when uploading to TestFlight\nif [ \"${ACTION}\" != \"install\" ]; then\n  exit 0\nfi\nFRAMEWORKS=\"${BUILT_PRODUCTS_DIR}/${EXECUTABLE_FOLDER_PATH}/Frameworks\"\n[ -d \"${FRAMEWORKS}\" ] || exit 0\nfor fw in \"${FRAMEWORKS}\"/*.framework; do\n  [ -d \"${fw}\" ] || continue\n  name=$(basename \"${fw}\" .framework)\n  target_dsym=\"${DWARF_DSYM_FOLDER_PATH}/${name}.framework.dSYM\"\n  [ -d \"${target_dsym}\" ] && continue\n  bin=\"${fw}/${name}\"\n  [ -f \"${bin}\" ] || continue\n  echo \"note: Generating dSYM for ${name}.framework\"\n  xcrun dsymutil \"${bin}\" -o \"${target_dsym}\" 2>&1 || true\ndone\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -475,13 +490,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = LT8U492WJ3;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.rupit.financer;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rupit.financer.beta;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -657,13 +673,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = LT8U492WJ3;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.rupit.financer;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rupit.financer.beta;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -679,13 +696,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = LT8U492WJ3;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.rupit.financer;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rupit.financer.beta;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
