@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
@@ -8,6 +9,43 @@ import '../../../core/widgets/common.dart';
 import '../data/loan_repo.dart';
 import '../../app_shell.dart';
 import '../../../core/widgets/app_bottom_nav.dart';
+
+const _loanTypeFeatureMap = {
+  'PERSONAL': 'enablePersonalLoan',
+  'GOLD': 'enableGoldLoan',
+  'GROUP': 'enableGroupLoan',
+  'VEHICLE': 'enableVehicleLoan',
+  'PROPERTY': 'enableMortgage',
+  'BUSINESS': 'enableBusinessLoan',
+  'AGRICULTURE': 'enableAgricultureLoan',
+  'EDUCATION': 'enableEducationLoan',
+  'DAILY': 'enableDailyLoan',
+  'WEEKLY': 'enableWeeklyLoan',
+};
+
+const _loanTypeLabels = {
+  'PERSONAL': 'Personal',
+  'GOLD': 'Gold',
+  'GROUP': 'Group',
+  'VEHICLE': 'Vehicle',
+  'PROPERTY': 'Property',
+  'BUSINESS': 'Business',
+  'AGRICULTURE': 'Agriculture',
+  'EDUCATION': 'Education',
+  'DAILY': 'Daily',
+  'WEEKLY': 'Weekly',
+};
+
+const _statusDropdownOptions = [
+  'DRAFT',
+  'PENDING',
+  'APPROVED',
+  'DISBURSED',
+  'ACTIVE',
+  'CLOSED',
+  'REJECTED',
+  'WRITTEN_OFF',
+];
 
 class LoanListPage extends ConsumerStatefulWidget {
   const LoanListPage({super.key});
@@ -23,7 +61,11 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
   bool _loading = false;
   bool _hasMore = true;
   String? _search;
-  String? _status;
+  String? _typeTab;
+  String _statusTab = 'ACTIVE';
+  String? _statusFilter;
+  String? _assigneeFilter;
+  List<Map<String, dynamic>> _assignees = [];
   Object? _error;
 
   @override
@@ -34,9 +76,43 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
         _load();
       }
     });
-    _load();
-    // Refresh user permissions so the FAB visibility tracks role changes.
-    Future.microtask(() => ref.read(authProvider.notifier).refreshMe());
+    Future.microtask(() async {
+      await ref.read(authProvider.notifier).refreshMe();
+      if (!mounted) return;
+      _initDefaults();
+      _loadAssignees();
+      _load();
+    });
+  }
+
+  void _initDefaults() {
+    final features = ref.read(authProvider).org?.features ?? const {};
+    final enabled = _loanTypeLabels.keys
+        .where((k) => !_loanTypeFeatureMap.containsKey(k) || features[_loanTypeFeatureMap[k]] == true)
+        .toList();
+    if (_typeTab == null && enabled.isNotEmpty) _typeTab = enabled.first;
+  }
+
+  Future<void> _loadAssignees() async {
+    final auth = ref.read(authProvider);
+    if (!(auth.hasRole('ORG_ADMIN') || auth.hasRole('MANAGER'))) return;
+    try {
+      final api = ref.read(apiClientProvider);
+      final res = await api.raw(() => api.dio.get('/team', queryParameters: {'limit': 500}));
+      final body = res.data;
+      final rawList = body is Map
+          ? (body['data'] is List
+              ? body['data']
+              : body['data'] is Map && body['data']['data'] is List
+                  ? body['data']['data']
+                  : const [])
+          : (body is List ? body : const []);
+      if (!mounted) return;
+      setState(() => _assignees = (rawList as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .where((u) => u['isActive'] == true)
+          .toList());
+    } catch (_) {}
   }
 
   @override
@@ -46,8 +122,15 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
     super.dispose();
   }
 
+  String? _resolvedStatus() {
+    if (_statusTab == 'ACTIVE') return 'ACTIVE';
+    if (_statusTab == 'CLOSED') return 'CLOSED';
+    return _statusFilter;
+  }
+
   Future<void> _load({bool reset = false}) async {
     if (_loading) return;
+    if (_typeTab == null) return;
     setState(() {
       _loading = true;
       if (reset) {
@@ -58,7 +141,13 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
       }
     });
     try {
-      final res = await ref.read(loanRepoProvider).list(page: _page, search: _search, status: _status);
+      final res = await ref.read(loanRepoProvider).list(
+            page: _page,
+            search: _search,
+            status: _resolvedStatus(),
+            type: _typeTab,
+            assignedToId: _assigneeFilter,
+          );
       final data = (res['data'] as List?) ?? const [];
       final pg = Map<String, dynamic>.from(res['pagination'] ?? {});
       setState(() {
@@ -73,9 +162,108 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
     }
   }
 
+  void _openAdvancedFilters() {
+    final auth = ref.read(authProvider);
+    final canFilterAssignee = auth.hasRole('ORG_ADMIN') || auth.hasRole('MANAGER');
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        String? tempStatus = _statusFilter;
+        String? tempAssignee = _assigneeFilter;
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) => Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 4,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Filters', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+                if (_statusTab == 'ALL')
+                  DropdownButtonFormField<String?>(
+                    initialValue: tempStatus,
+                    decoration: const InputDecoration(labelText: 'Status'),
+                    items: [
+                      const DropdownMenuItem<String?>(value: null, child: Text('All Statuses')),
+                      ..._statusDropdownOptions.map(
+                        (s) => DropdownMenuItem<String?>(value: s, child: Text(s)),
+                      ),
+                    ],
+                    onChanged: (v) => setSheetState(() => tempStatus = v),
+                  ),
+                if (canFilterAssignee) ...[
+                  if (_statusTab == 'ALL') const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    initialValue: tempAssignee,
+                    decoration: const InputDecoration(labelText: 'Assignee'),
+                    items: [
+                      const DropdownMenuItem<String?>(value: null, child: Text('All Assignees')),
+                      ..._assignees.map((a) => DropdownMenuItem<String?>(
+                            value: a['id']?.toString(),
+                            child: Text(a['name']?.toString() ?? ''),
+                          )),
+                    ],
+                    onChanged: (v) => setSheetState(() => tempAssignee = v),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          setSheetState(() {
+                            tempStatus = null;
+                            tempAssignee = null;
+                          });
+                        },
+                        child: const Text('Clear'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          setState(() {
+                            _statusFilter = tempStatus;
+                            _assigneeFilter = tempAssignee;
+                          });
+                          _load(reset: true);
+                        },
+                        child: const Text('Apply'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final canCreate = ref.watch(authProvider).hasPermission('loans.create');
+    final auth = ref.watch(authProvider);
+    final canCreate = auth.hasPermission('loans.create');
+    final canFilterAssignee = auth.hasRole('ORG_ADMIN') || auth.hasRole('MANAGER');
+    final features = auth.org?.features ?? const {};
+    final typeTabs = _loanTypeLabels.entries
+        .where((e) => !_loanTypeFeatureMap.containsKey(e.key) || features[_loanTypeFeatureMap[e.key]] == true)
+        .toList();
+    final activeFilterCount =
+        (_statusTab == 'ALL' && _statusFilter != null ? 1 : 0) + (_assigneeFilter != null ? 1 : 0);
+    final showFilterIcon = canFilterAssignee || _statusTab == 'ALL';
+
     return Scaffold(
       drawer: const AppDrawer(),
       bottomNavigationBar: const AppBottomNav(),
@@ -94,7 +282,7 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
             child: Row(
               children: [
                 Expanded(
@@ -107,22 +295,94 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
                     },
                   ),
                 ),
-                const SizedBox(width: 8),
-                PopupMenuButton<String?>(
-                  icon: const Icon(Icons.filter_list),
-                  onSelected: (v) {
-                    _status = v;
-                    _load(reset: true);
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: null, child: Text('All')),
-                    PopupMenuItem(value: 'PENDING', child: Text('Pending')),
-                    PopupMenuItem(value: 'APPROVED', child: Text('Approved')),
-                    PopupMenuItem(value: 'ACTIVE', child: Text('Active')),
-                    PopupMenuItem(value: 'CLOSED', child: Text('Closed')),
-                    PopupMenuItem(value: 'REJECTED', child: Text('Rejected')),
-                  ],
-                ),
+                if (showFilterIcon) ...[
+                  const SizedBox(width: 8),
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.tune),
+                        tooltip: 'Filters',
+                        onPressed: _openAdvancedFilters,
+                      ),
+                      if (activeFilterCount > 0)
+                        Positioned(
+                          right: 4,
+                          top: 4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                            constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                            child: Text(
+                              '$activeFilterCount',
+                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (typeTabs.isNotEmpty)
+            SizedBox(
+              height: 40,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: typeTabs.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 6),
+                itemBuilder: (_, i) {
+                  final e = typeTabs[i];
+                  final selected = _typeTab == e.key;
+                  return ChoiceChip(
+                    label: Text(
+                      e.value,
+                      style: TextStyle(
+                        color: selected ? AppColors.primary : AppColors.textPrimary,
+                        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                      ),
+                    ),
+                    selected: selected,
+                    showCheckmark: false,
+                    backgroundColor: Colors.white,
+                    selectedColor: AppColors.primary.withValues(alpha: 0.12),
+                    side: BorderSide(color: selected ? AppColors.primary : AppColors.border),
+                    onSelected: (_) {
+                      if (selected) return;
+                      setState(() => _typeTab = e.key);
+                      _load(reset: true);
+                    },
+                  );
+                },
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Row(
+              children: [
+                for (final pill in const [
+                  ['ACTIVE', 'Active'],
+                  ['CLOSED', 'Closed'],
+                  ['ALL', 'All'],
+                ]) ...[
+                  Expanded(
+                    child: _StatusPill(
+                      label: pill[1],
+                      selected: _statusTab == pill[0],
+                      onTap: () {
+                        if (_statusTab == pill[0]) return;
+                        setState(() {
+                          _statusTab = pill[0];
+                          _statusFilter = null;
+                        });
+                        _load(reset: true);
+                      },
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -172,6 +432,39 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _StatusPill({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary.withValues(alpha: 0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: selected ? AppColors.primary : AppColors.border),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selected ? AppColors.primary : AppColors.textSecondary,
+          ),
+        ),
       ),
     );
   }

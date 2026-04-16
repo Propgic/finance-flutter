@@ -5,11 +5,19 @@ class LoanRepo {
   final ApiClient api;
   LoanRepo(this.api);
 
-  Future<Map<String, dynamic>> list({int page = 1, int limit = 20, String? search, String? status, String? type}) async {
+  Future<Map<String, dynamic>> list({
+    int page = 1,
+    int limit = 20,
+    String? search,
+    String? status,
+    String? type,
+    String? assignedToId,
+  }) async {
     final q = <String, dynamic>{'page': page, 'limit': limit};
     if (search?.isNotEmpty ?? false) q['search'] = search;
     if (status?.isNotEmpty ?? false) q['status'] = status;
     if (type?.isNotEmpty ?? false) q['loanType'] = type;
+    if (assignedToId?.isNotEmpty ?? false) q['assignedToId'] = assignedToId;
     final res = await api.raw(() => api.dio.get('/loans', queryParameters: q));
     return Map<String, dynamic>.from(res.data as Map);
   }
