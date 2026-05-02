@@ -22,10 +22,13 @@ class LoanRepo {
     return Map<String, dynamic>.from(res.data as Map);
   }
 
-  Future<List<dynamic>> overdue() async {
-    final d = await api.get('/loans/overdue');
-    if (d is List) return d;
-    if (d is Map && d['data'] is List) return d['data'];
+  Future<List<dynamic>> overdue({bool groupByCustomer = false}) async {
+    final q = <String, dynamic>{};
+    if (groupByCustomer) q['groupBy'] = 'customer';
+    final res = await api.raw(() => api.dio.get('/loans/overdue', queryParameters: q));
+    final body = res.data;
+    if (body is Map && body['data'] is List) return body['data'];
+    if (body is List) return body;
     return const [];
   }
 

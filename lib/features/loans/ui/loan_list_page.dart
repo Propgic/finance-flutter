@@ -414,6 +414,15 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
                                         style: const TextStyle(fontWeight: FontWeight.w500)),
                                     Text('${l['loanType'] ?? ''} • ${formatCurrency(l['principalAmount'])}',
                                         style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                    if (l['status'] == 'ACTIVE' && toNum(l['overdueAmount']) > 0) ...[
+                                      Text('Overdue: ${formatCurrency(l['overdueAmount'])} (${l['overdueCount']} installment${(l['overdueCount'] ?? 0) > 1 ? 's' : ''})',
+                                          style: const TextStyle(fontSize: 11, color: AppColors.danger, fontWeight: FontWeight.w600)),
+                                      if (toNum(l['pendingCollections']) > 0)
+                                        Text('⏳ ${formatCurrency(l['pendingCollections'])} pending verification',
+                                            style: const TextStyle(fontSize: 10, color: AppColors.warning)),
+                                    ] else if (l['status'] == 'ACTIVE' && toNum(l['excessAmount']) > 0)
+                                      Text('+${formatCurrency(l['excessAmount'])} advance',
+                                          style: const TextStyle(fontSize: 11, color: AppColors.accent, fontWeight: FontWeight.w600)),
                                   ],
                                 ),
                                 trailing: Column(

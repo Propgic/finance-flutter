@@ -90,7 +90,7 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
           : (body is List ? body : const []);
       setState(() => _assignees = (rawList as List)
           .map((e) => Map<String, dynamic>.from(e as Map))
-          .where((u) => u['isActive'] == true)
+          .where((u) => u['isActive'] == true && u['role'] != 'ORG_ADMIN' && u['role'] != 'MANAGER')
           .toList());
     } catch (e) {
       debugPrint('team load failed: $e');

@@ -5,16 +5,23 @@ class ExpenseRepo {
   final ApiClient api;
   ExpenseRepo(this.api);
 
-  Future<Map<String, dynamic>> list({int page = 1, int limit = 20, String? category, String? month}) async {
+  Future<Map<String, dynamic>> list({int page = 1, int limit = 20, String? category, String? month, String? from, String? to}) async {
     final q = <String, dynamic>{'page': page, 'limit': limit};
     if (category?.isNotEmpty ?? false) q['category'] = category;
     if (month?.isNotEmpty ?? false) q['month'] = month;
+    if (from?.isNotEmpty ?? false) q['from'] = from;
+    if (to?.isNotEmpty ?? false) q['to'] = to;
     final res = await api.raw(() => api.dio.get('/expenses', queryParameters: q));
     return Map<String, dynamic>.from(res.data as Map);
   }
 
-  Future<Map<String, dynamic>> summary() async {
-    final d = await api.get('/expenses/summary');
+  Future<Map<String, dynamic>> summary({String? from, String? to}) async {
+    final q = <String, String>{};
+    if (from?.isNotEmpty ?? false) q['from'] = from!;
+    if (to?.isNotEmpty ?? false) q['to'] = to!;
+    final res = await api.raw(() => api.dio.get('/expenses/summary', queryParameters: q));
+    final d = res.data;
+    if (d is Map && d['data'] is Map) return Map<String, dynamic>.from(d['data'] as Map);
     return Map<String, dynamic>.from(d as Map);
   }
 

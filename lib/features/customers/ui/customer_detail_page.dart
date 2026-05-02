@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
@@ -126,8 +127,10 @@ class _CustomerDetailPageState extends ConsumerState<CustomerDetailPage> with Si
               KeyValueRow(label: 'Father', value: c['fatherName']?.toString() ?? '-'),
               KeyValueRow(label: 'Gender', value: c['gender']?.toString() ?? '-'),
               KeyValueRow(label: 'Date of Birth', value: formatDate(c['dateOfBirth'])),
-              KeyValueRow(label: 'Phone', value: c['phone']?.toString() ?? '-'),
-              KeyValueRow(label: 'Alt Phone', value: c['alternatePhone']?.toString() ?? '-'),
+              KeyValueRow(label: 'Phone', value: c['phone']?.toString() ?? '-',
+                  onTap: c['phone'] != null ? () => launchUrl(Uri.parse('tel:${c['phone']}')) : null),
+              KeyValueRow(label: 'Alt Phone', value: c['alternatePhone']?.toString() ?? '-',
+                  onTap: c['alternatePhone'] != null ? () => launchUrl(Uri.parse('tel:${c['alternatePhone']}')) : null),
               KeyValueRow(label: 'Email', value: c['email']?.toString() ?? '-'),
               KeyValueRow(label: 'Aadhaar', value: c['aadhaarNumber']?.toString() ?? '-'),
               KeyValueRow(label: 'PAN', value: c['panNumber']?.toString() ?? '-'),
@@ -165,7 +168,8 @@ class _CustomerDetailPageState extends ConsumerState<CustomerDetailPage> with Si
               children: [
                 KeyValueRow(label: 'Name', value: c['nomineeName']?.toString() ?? '-'),
                 KeyValueRow(label: 'Relation', value: c['nomineeRelation']?.toString() ?? '-'),
-                KeyValueRow(label: 'Phone', value: c['nomineePhone']?.toString() ?? '-'),
+                KeyValueRow(label: 'Phone', value: c['nomineePhone']?.toString() ?? '-',
+                    onTap: c['nomineePhone'] != null ? () => launchUrl(Uri.parse('tel:${c['nomineePhone']}')) : null),
               ],
             ),
           ),

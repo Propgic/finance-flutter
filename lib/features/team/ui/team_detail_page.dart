@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
@@ -93,7 +94,8 @@ class TeamDetailPage extends ConsumerWidget {
               child: Column(
                 children: [
                   KeyValueRow(label: 'Email', value: u['email']?.toString() ?? '-'),
-                  KeyValueRow(label: 'Phone', value: u['phone']?.toString() ?? '-'),
+                  KeyValueRow(label: 'Phone', value: u['phone']?.toString() ?? '-',
+                      onTap: u['phone'] != null ? () => launchUrl(Uri.parse('tel:${u['phone']}')) : null),
                 ],
               ),
             ),
