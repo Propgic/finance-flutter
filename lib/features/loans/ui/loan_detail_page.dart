@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
@@ -127,7 +128,8 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
           child: Column(
             children: [
               KeyValueRow(label: 'Name', value: '${c['firstName'] ?? ''} ${c['lastName'] ?? ''}'.trim()),
-              KeyValueRow(label: 'Phone', value: c['phone']?.toString() ?? '-'),
+              KeyValueRow(label: 'Phone', value: c['phone']?.toString() ?? '-',
+                  onTap: c['phone'] != null ? () => launchUrl(Uri.parse('tel:${c['phone']}')) : null),
             ],
           ),
         ),

@@ -117,7 +117,8 @@ class KeyValueRow extends StatelessWidget {
   final String label;
   final String value;
   final Widget? trailing;
-  const KeyValueRow({super.key, required this.label, required this.value, this.trailing});
+  final VoidCallback? onTap;
+  const KeyValueRow({super.key, required this.label, required this.value, this.trailing, this.onTap});
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -129,7 +130,14 @@ class KeyValueRow extends StatelessWidget {
             width: 130,
             child: Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
           ),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
+          Expanded(
+            child: onTap != null
+                ? GestureDetector(
+                    onTap: onTap,
+                    child: Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.primary, decoration: TextDecoration.underline)),
+                  )
+                : Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          ),
           if (trailing != null) trailing!,
         ],
       ),
@@ -188,10 +196,25 @@ class Avatar extends StatelessWidget {
     final letters = name.trim().isEmpty
         ? '?'
         : name.trim().split(RegExp(r'\s+')).take(2).map((e) => e[0]).join().toUpperCase();
+    if (resolved != null) {
+      return ClipOval(
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.12),
+            image: DecorationImage(
+              image: CachedNetworkImageProvider(resolved),
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+            ),
+          ),
+        ),
+      );
+    }
     return CircleAvatar(
       radius: size / 2,
       backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-      foregroundImage: resolved != null ? CachedNetworkImageProvider(resolved) : null,
       child: Text(letters, style: TextStyle(color: AppColors.primary, fontSize: size * 0.4, fontWeight: FontWeight.w600)),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
@@ -49,6 +50,8 @@ class _DailyCashReportPageState extends ConsumerState<DailyCashReportPage> {
   }
 
   Widget _buildBody(Map<String,dynamic> r) {
+    final auth = ref.read(authProvider);
+    final isAdmin = auth.hasRole('ORG_ADMIN') || auth.hasRole('MANAGER');
     final txns = (r['transactions'] as List?) ?? const [];
     final cap = Map<String,dynamic>.from(r['capitalSummary'] ?? {});
     final open = toNum(r['openingBalance']);
@@ -67,25 +70,27 @@ class _DailyCashReportPageState extends ConsumerState<DailyCashReportPage> {
             crossAxisSpacing: 8,
             childAspectRatio: 2,
             children: [
-              _stat('Opening', formatCurrency(open), open < 0 ? AppColors.danger : AppColors.textPrimary, Colors.white),
+              if (isAdmin) _stat('Opening', formatCurrency(open), open < 0 ? AppColors.danger : AppColors.textPrimary, Colors.white),
               _stat('Inflow', '+${formatCurrency(r['totalInflow'])}', AppColors.accent, AppColors.accent.withValues(alpha: 0.08)),
               _stat('Outflow', '-${formatCurrency(r['totalOutflow'])}', AppColors.danger, AppColors.danger.withValues(alpha: 0.08)),
               _stat('Net Today', formatCurrency(net), net >= 0 ? AppColors.primary : AppColors.danger, Colors.white),
             ],
           ),
-          const SizedBox(height: 8),
-          Card(
-            color: close >= 0 ? AppColors.primary.withValues(alpha: 0.08) : AppColors.danger.withValues(alpha: 0.08),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(children: [
-                const Text('Closing Balance', style: TextStyle(fontSize: 13)),
-                const Spacer(),
-                Text(formatCurrency(close), style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: close >= 0 ? AppColors.primary : AppColors.danger)),
-              ]),
+          if (isAdmin) ...[
+            const SizedBox(height: 8),
+            Card(
+              color: close >= 0 ? AppColors.primary.withValues(alpha: 0.08) : AppColors.danger.withValues(alpha: 0.08),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(children: [
+                  const Text('Closing Balance', style: TextStyle(fontSize: 13)),
+                  const Spacer(),
+                  Text(formatCurrency(close), style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: close >= 0 ? AppColors.primary : AppColors.danger)),
+                ]),
+              ),
             ),
-          ),
-          if (cap.isNotEmpty) ...[
+          ],
+          if (isAdmin && cap.isNotEmpty) ...[
             const SizedBox(height: 16),
             const Text('CAPITAL POSITION', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary, letterSpacing: 1)),
             const SizedBox(height: 8),

@@ -124,19 +124,6 @@ class _CustomerListPageState extends ConsumerState<CustomerListPage> {
                     },
                   ),
                 ),
-                const SizedBox(width: 8),
-                PopupMenuButton<bool?>(
-                  icon: const Icon(Icons.filter_list),
-                  onSelected: (v) {
-                    _active = v;
-                    _load(reset: true);
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: null, child: Text('All')),
-                    PopupMenuItem(value: true, child: Text('Active')),
-                    PopupMenuItem(value: false, child: Text('Inactive')),
-                  ],
-                ),
               ],
             ),
           ),

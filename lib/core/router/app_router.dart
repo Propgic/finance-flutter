@@ -33,6 +33,7 @@ import '../../features/chitfunds/ui/chitfund_form_page.dart';
 import '../../features/chitfunds/ui/chitfund_detail_page.dart';
 import '../../features/expenses/ui/expense_list_page.dart';
 import '../../features/expenses/ui/expense_form_page.dart';
+import '../../features/expenses/ui/expense_report_page.dart';
 import '../../features/investors/ui/investor_list_page.dart';
 import '../../features/investors/ui/investor_form_page.dart';
 import '../../features/investors/ui/investor_detail_page.dart';
@@ -116,6 +117,8 @@ final routerProvider = Provider<GoRouter>((ref) {
 
           GoRoute(path: '/expenses', builder: (_, __) => const ExpenseListPage()),
           GoRoute(path: '/expenses/new', builder: (_, __) => const ExpenseFormPage()),
+          GoRoute(path: '/expenses/:id/edit', builder: (_, state) => ExpenseFormPage(expenseId: state.pathParameters['id'])),
+          GoRoute(path: '/reports/expenses', builder: (_, __) => const ExpenseReportPage()),
 
           GoRoute(path: '/investors', builder: (_, __) => const InvestorListPage()),
           GoRoute(path: '/investors/new', builder: (_, __) => const InvestorFormPage()),

@@ -12,8 +12,8 @@ class CollectionReportPage extends ConsumerStatefulWidget {
 }
 
 class _CollectionReportPageState extends ConsumerState<CollectionReportPage> {
-  DateTime? _from;
-  DateTime? _to;
+  DateTime _from = DateTime.now();
+  DateTime _to = DateTime.now();
   String? _mode;
   List<Map<String,dynamic>> _data = const [];
   bool _loading = true;
@@ -25,9 +25,7 @@ class _CollectionReportPageState extends ConsumerState<CollectionReportPage> {
   Future<void> _fetch() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final q = <String,dynamic>{};
-      if (_from != null) q['dateFrom'] = formatInputDate(_from!);
-      if (_to != null) q['dateTo'] = formatInputDate(_to!);
+      final q = <String,dynamic>{'dateFrom': formatInputDate(_from), 'dateTo': formatInputDate(_to)};
       if (_mode != null) q['paymentMode'] = _mode;
       final api = ref.read(apiClientProvider);
       final d = await api.get('/reports/collections', query: q);
@@ -50,13 +48,13 @@ class _CollectionReportPageState extends ConsumerState<CollectionReportPage> {
             padding: const EdgeInsets.all(10),
             child: Wrap(spacing: 8, runSpacing: 8, children: [
               OutlinedButton.icon(onPressed: () async {
-                final d = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime.now(), initialDate: _from ?? DateTime.now());
+                final d = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime.now(), initialDate: _from);
                 if (d != null) { _from = d; _fetch(); }
-              }, icon: const Icon(Icons.calendar_today, size: 14), label: Text('From: ${_from == null ? "-" : formatDate(_from)}', style: const TextStyle(fontSize: 12))),
+              }, icon: const Icon(Icons.calendar_today, size: 14), label: Text('From: ${formatDate(_from)}', style: const TextStyle(fontSize: 12))),
               OutlinedButton.icon(onPressed: () async {
-                final d = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime.now(), initialDate: _to ?? DateTime.now());
+                final d = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime.now(), initialDate: _to);
                 if (d != null) { _to = d; _fetch(); }
-              }, icon: const Icon(Icons.calendar_today, size: 14), label: Text('To: ${_to == null ? "-" : formatDate(_to)}', style: const TextStyle(fontSize: 12))),
+              }, icon: const Icon(Icons.calendar_today, size: 14), label: Text('To: ${formatDate(_to)}', style: const TextStyle(fontSize: 12))),
               SizedBox(width: 160, child: DropdownButtonFormField<String?>(
                 initialValue: _mode,
                 decoration: const InputDecoration(labelText: 'Mode', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
@@ -105,7 +103,10 @@ class _CollectionReportPageState extends ConsumerState<CollectionReportPage> {
                       subtitle: Text('${r['receiptNumber'] ?? ''} • ${r['loanNumber'] ?? ''} • ${r['paymentMode'] ?? ''}', style: const TextStyle(fontSize: 11)),
                       trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
                         Text(formatCurrency(r['amount']), style: const TextStyle(fontWeight: FontWeight.w700)),
-                        Text(formatDate(r['date']), style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                        StatusChip(
+                          label: r['verificationStatus'] == 'VERIFIED' ? 'Accepted' : r['verificationStatus'] == 'REJECTED' ? 'Rejected' : 'Pending',
+                          color: statusColor(r['verificationStatus']?.toString()),
+                        ),
                       ]),
                     ),
                   )),

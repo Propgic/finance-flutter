@@ -22,10 +22,16 @@ class _CollectionListPageState extends ConsumerState<CollectionListPage> {
   bool _loading = false;
   bool _hasMore = true;
   String? _verification;
+  late String _dateFrom;
+  late String _dateTo;
+  Map<String, dynamic>? _summary;
 
   @override
   void initState() {
     super.initState();
+    final today = formatInputDate(DateTime.now());
+    _dateFrom = today;
+    _dateTo = today;
     _scroll.addListener(() {
       if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 300 && !_loading && _hasMore) _load();
     });
@@ -39,12 +45,15 @@ class _CollectionListPageState extends ConsumerState<CollectionListPage> {
     if (_loading) return;
     setState(() { _loading = true; if (reset) { _items.clear(); _page = 1; _hasMore = true; } });
     try {
-      final res = await ref.read(collectionRepoProvider).list(page: _page, verificationStatus: _verification);
+      final res = await ref.read(collectionRepoProvider).list(
+        page: _page, fromDate: _dateFrom, toDate: _dateTo, verificationStatus: _verification,
+      );
       final rawData = res['data'];
       final data = rawData is List
           ? rawData
           : (rawData is Map && rawData['collections'] is List ? rawData['collections'] as List : const []);
       final pg = Map<String, dynamic>.from(res['pagination'] ?? {});
+      if (res['summary'] != null) _summary = Map<String, dynamic>.from(res['summary'] as Map);
       var mapped = data.map((e) => Map<String, dynamic>.from(e as Map));
       if (_verification != null) {
         mapped = mapped.where((c) => c['verificationStatus']?.toString() == _verification);
@@ -56,6 +65,17 @@ class _CollectionListPageState extends ConsumerState<CollectionListPage> {
       });
     } catch (e) { showToast('Failed: $e', error: true); }
     finally { if (mounted) setState(() => _loading = false); }
+  }
+
+  Future<void> _pickDate(bool isFrom) async {
+    final init = DateTime.tryParse(isFrom ? _dateFrom : _dateTo) ?? DateTime.now();
+    final d = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime.now(), initialDate: init);
+    if (d != null) {
+      setState(() {
+        if (isFrom) _dateFrom = formatInputDate(d); else _dateTo = formatInputDate(d);
+      });
+      _load(reset: true);
+    }
   }
 
   @override
@@ -77,6 +97,37 @@ class _CollectionListPageState extends ConsumerState<CollectionListPage> {
           : null,
       body: Column(
         children: [
+          if (_summary != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: Row(children: [
+                _metricCard('Total', formatCurrency(_summary!['totalCollected']), AppColors.textPrimary),
+                const SizedBox(width: 8),
+                _metricCard('Pending', formatCurrency(_summary!['pending']), AppColors.warning),
+                const SizedBox(width: 8),
+                _metricCard('Verified', formatCurrency(_summary!['verified']), AppColors.accent),
+              ]),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Row(children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickDate(true),
+                  icon: const Icon(Icons.calendar_today, size: 14),
+                  label: Text(_dateFrom, style: const TextStyle(fontSize: 12)),
+                ),
+              ),
+              const Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Text('to', style: TextStyle(fontSize: 12, color: AppColors.textSecondary))),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickDate(false),
+                  icon: const Icon(Icons.calendar_today, size: 14),
+                  label: Text(_dateTo, style: const TextStyle(fontSize: 12)),
+                ),
+              ),
+            ]),
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: SingleChildScrollView(
@@ -129,6 +180,22 @@ class _CollectionListPageState extends ConsumerState<CollectionListPage> {
       ),
     );
   }
+
+  Widget _metricCard(String label, String value, Color color) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 2),
+        Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: color)),
+      ]),
+    ),
+  );
 
   Widget _chip(String label, String? value) {
     final sel = _verification == value;

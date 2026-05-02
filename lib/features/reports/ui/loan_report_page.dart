@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
@@ -26,14 +27,31 @@ class LoanReportPage extends ConsumerStatefulWidget {
 class _LoanReportPageState extends ConsumerState<LoanReportPage> {
   String? _type;
   String? _status;
-  DateTime? _from;
-  DateTime? _to;
+  late DateTime _from;
+  late DateTime _to;
   List<Map<String,dynamic>> _data = const [];
   bool _loading = true;
   Object? _error;
 
   @override
-  void initState() { super.initState(); _fetch(); }
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _from = DateTime(now.year, now.month, 1);
+    _to = now;
+    _fetch();
+  }
+
+  void _resetFilters() {
+    final now = DateTime.now();
+    setState(() {
+      _type = null;
+      _status = null;
+      _from = DateTime(now.year, now.month, 1);
+      _to = now;
+    });
+    _fetch();
+  }
 
   Future<void> _fetch() async {
     setState(() { _loading = true; _error = null; });
@@ -41,8 +59,8 @@ class _LoanReportPageState extends ConsumerState<LoanReportPage> {
       final q = <String,dynamic>{};
       if (_type != null) q['loanType'] = _type;
       if (_status != null) q['status'] = _status;
-      if (_from != null) q['fromDate'] = formatInputDate(_from!);
-      if (_to != null) q['toDate'] = formatInputDate(_to!);
+      q['fromDate'] = formatInputDate(_from);
+      q['toDate'] = formatInputDate(_to);
       final api = ref.read(apiClientProvider);
       final d = await api.get('/reports/loans', query: q);
       final list = d is List ? d : (d is Map && d['data'] is List ? d['data'] : const []);
@@ -56,10 +74,16 @@ class _LoanReportPageState extends ConsumerState<LoanReportPage> {
     final features = ref.watch(authProvider).org?.features ?? const {};
     final types = _loanTypeLabels.entries.where((e) => features[_loanTypeFeatureMap[e.key]] == true || _loanTypeFeatureMap[e.key] == null).toList();
     final totalDisbursed = _data.fold<num>(0, (s, r) => s + toNum(r['disbursed']));
+    final totalInterest = _data.fold<num>(0, (s, r) => s + toNum(r['interest']));
     final totalOutstanding = _data.fold<num>(0, (s, r) => s + toNum(r['outstanding']));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Loan Report')),
+      appBar: AppBar(
+        title: const Text('Loan Report'),
+        actions: [
+          TextButton(onPressed: _resetFilters, child: const Text('Reset', style: TextStyle(fontSize: 12))),
+        ],
+      ),
       body: Column(
         children: [
           _filterBar(types),
@@ -73,10 +97,14 @@ class _LoanReportPageState extends ConsumerState<LoanReportPage> {
                 children: [
                   if (_data.isNotEmpty) Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(children: [
-                      Expanded(child: _sumCard('Total Disbursed', formatCurrency(totalDisbursed), '${_data.length} loans', AppColors.primary)),
-                      const SizedBox(width: 8),
-                      Expanded(child: _sumCard('Outstanding', formatCurrency(totalOutstanding), '', AppColors.danger)),
+                    child: Column(children: [
+                      Row(children: [
+                        Expanded(child: _sumCard('Total Disbursed', formatCurrency(totalDisbursed), '${_data.length} loans', AppColors.primary)),
+                        const SizedBox(width: 8),
+                        Expanded(child: _sumCard('Interest Earned', formatCurrency(totalInterest), '', AppColors.accent)),
+                      ]),
+                      const SizedBox(height: 8),
+                      _sumCard('Outstanding', formatCurrency(totalOutstanding), '', AppColors.danger),
                     ]),
                   ),
                   if (_data.isEmpty) const EmptyView(message: 'No data for selected filters') else ..._data.map(_loanTile),
@@ -111,13 +139,13 @@ class _LoanReportPageState extends ConsumerState<LoanReportPage> {
     ),
   );
 
-  Widget _dateBtn(String label, DateTime? v, ValueChanged<DateTime> on) => OutlinedButton.icon(
+  Widget _dateBtn(String label, DateTime v, ValueChanged<DateTime> on) => OutlinedButton.icon(
     onPressed: () async {
-      final d = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime.now(), initialDate: v ?? DateTime.now());
+      final d = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime.now(), initialDate: v);
       if (d != null) on(d);
     },
     icon: const Icon(Icons.calendar_today, size: 14),
-    label: Text('$label: ${v == null ? "-" : formatDate(v)}', style: const TextStyle(fontSize: 12)),
+    label: Text('$label: ${formatDate(v)}', style: const TextStyle(fontSize: 12)),
   );
 
   Widget _sumCard(String label, String value, String sub, Color color) => Card(
@@ -142,6 +170,7 @@ class _LoanReportPageState extends ConsumerState<LoanReportPage> {
         Text('Principal: ${formatCurrency(r['principal'])} • Outstanding: ${formatCurrency(r['outstanding'])}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
       ]),
       trailing: StatusChip(label: r['status']?.toString() ?? '', color: statusColor(r['status']?.toString())),
+      onTap: r['id'] != null ? () => context.push('/loans/${r['id']}') : null,
     ),
   );
 }

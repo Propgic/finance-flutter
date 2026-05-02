@@ -66,9 +66,10 @@ class DashboardPage extends ConsumerWidget {
       padding: const EdgeInsets.all(12),
       children: [
         _heroStats(d, isFieldOfficer: isFieldOfficer, features: features),
-        if (isFieldOfficer)
-          _fieldOfficerStats(d)
-        else ...[
+        if (isFieldOfficer) ...[
+          _fieldOfficerStats(context, d),
+          _dailyCollectionChart(d),
+        ] else ...[
           _daySummaryCard(d),
           if ((features['enableLoans'] == true) && role == 'ORG_ADMIN') _outstandingCard(d),
           if (features['enableSavings'] == true) _savingsPoolCard(d),
@@ -163,7 +164,7 @@ class DashboardPage extends ConsumerWidget {
   }
 
   // === Field officer: 4 stat cards ===
-  Widget _fieldOfficerStats(Map<String, dynamic> d) {
+  Widget _fieldOfficerStats(BuildContext context, Map<String, dynamic> d) {
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -173,19 +174,73 @@ class DashboardPage extends ConsumerWidget {
       childAspectRatio: 1.3,
       children: [
         _statTile("Today's Loan Issues", formatCurrency(d['todayLoanIssuedAmount'] ?? d['todayDisbursedAmount']),
-            subtitle: '${d['todayDisbursedCount'] ?? 0} loans', icon: Icons.payments, color: AppColors.accent),
+            subtitle: '${d['todayDisbursedCount'] ?? 0} loans', icon: Icons.payments, color: AppColors.accent,
+            onTap: () => context.push('/reports/loans')),
         _statTile("Today's Collection", formatCurrency(d['totalCollectionsToday']),
-            icon: Icons.receipt_long, color: AppColors.warning),
+            icon: Icons.receipt_long, color: AppColors.warning,
+            onTap: () => context.push('/collections')),
         _statTile('Total Due to Company', formatCurrency(d['companyAmountInMarket']),
-            icon: Icons.trending_up, color: AppColors.danger),
+            icon: Icons.trending_up, color: AppColors.danger,
+            onTap: () => context.push('/collections/verify')),
         _statTile('Active Customers', '${d['activeCustomers'] ?? 0}',
-            subtitle: 'assigned to you', icon: Icons.people, color: AppColors.primary),
+            subtitle: 'assigned to you', icon: Icons.people, color: AppColors.primary,
+            onTap: () => context.push('/customers')),
       ],
     );
   }
 
-  Widget _statTile(String label, String value, {String? subtitle, required IconData icon, required Color color}) {
-    return Card(
+  Widget _dailyCollectionChart(Map<String, dynamic> d) {
+    final trend = ((d['dailyCollectionTrend'] as List?) ?? const [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    if (trend.isEmpty) return const SizedBox.shrink();
+    final maxAmt = trend.fold<double>(0, (s, e) => s > toNum(e['amount']).toDouble() ? s : toNum(e['amount']).toDouble());
+    return SectionCard(
+      title: 'Daily Collections (Last 7 Days)',
+      child: SizedBox(
+        height: 160,
+        child: LineChart(
+          LineChartData(
+            gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: maxAmt > 0 ? maxAmt / 4 : 1),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 22, getTitlesWidget: (v, _) {
+                final i = v.toInt();
+                if (i < 0 || i >= trend.length) return const SizedBox.shrink();
+                return Text(trend[i]['day']?.toString().substring(0, 2) ?? '', style: const TextStyle(fontSize: 10, color: AppColors.textSecondary));
+              })),
+              leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            ),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [
+              LineChartBarData(
+                spots: List.generate(trend.length, (i) => FlSpot(i.toDouble(), toNum(trend[i]['amount']).toDouble())),
+                isCurved: true,
+                color: AppColors.accent,
+                barWidth: 2.5,
+                dotData: FlDotData(show: trend.length <= 7),
+                belowBarData: BarAreaData(show: true, color: AppColors.accent.withValues(alpha: 0.12)),
+              ),
+            ],
+            lineTouchData: LineTouchData(
+              touchTooltipData: LineTouchTooltipData(
+                getTooltipItems: (spots) => spots.map((s) {
+                  final i = s.spotIndex;
+                  return LineTooltipItem('${trend[i]['day']}\n${formatCurrency(s.y)}', const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600));
+                }).toList(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statTile(String label, String value, {String? subtitle, required IconData icon, required Color color, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Card(
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -219,7 +274,7 @@ class DashboardPage extends ConsumerWidget {
           ],
         ),
       ),
-    );
+    ));
   }
 
   // === Day summary card ===
@@ -382,19 +437,18 @@ class DashboardPage extends ConsumerWidget {
       child: Column(
         children: [
           _iconRow(
-            icon: Icons.arrow_upward,
-            iconColor: Colors.orange,
-            label: 'Upcoming EMIs (next 7 days)',
-            value: '${upcoming['count'] ?? 0} EMIs',
-            trailing: Text(formatCurrency(upcoming['totalAmount']), style: const TextStyle(fontWeight: FontWeight.w700)),
-          ),
-          _iconRow(
             icon: Icons.warning_amber,
             iconColor: AppColors.danger,
             label: 'Total Overdue',
             value: formatCurrency(d['totalOverdue']),
             valueColor: AppColors.danger,
             trailing: OutlinedButton(onPressed: () => context.push('/loans/overdue'), child: const Text('View')),
+          ),
+          _iconRow(
+            icon: Icons.currency_rupee,
+            iconColor: AppColors.primary,
+            label: "This Month's Collections",
+            value: formatCurrency(d['totalCollectionsThisMonth']),
           ),
           if (isAdmin && pendingCount > 0)
             _iconRow(
@@ -405,10 +459,11 @@ class DashboardPage extends ConsumerWidget {
               trailing: OutlinedButton(onPressed: () => context.push('/collections/verify'), child: const Text('Verify')),
             ),
           _iconRow(
-            icon: Icons.currency_rupee,
-            iconColor: AppColors.primary,
-            label: "This Month's Collections",
-            value: formatCurrency(d['totalCollectionsThisMonth']),
+            icon: Icons.arrow_upward,
+            iconColor: Colors.orange,
+            label: 'Upcoming EMIs (next 7 days)',
+            value: '${upcoming['count'] ?? 0} EMIs',
+            trailing: Text(formatCurrency(upcoming['totalAmount']), style: const TextStyle(fontWeight: FontWeight.w700)),
           ),
         ],
       ),
