@@ -26,10 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSFaceIDUsageDescription</key>
-	<string>Use Face ID to sign in quickly and securely.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>This app requires access to your camera to capture profile photos.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Use Face ID to sign in quickly and securely.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app requires access to your photo library to allow you to upload and share photos.</string>
 	<key>UIApplicationSceneManifest</key>
