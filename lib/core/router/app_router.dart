@@ -84,7 +84,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/profile', builder: (_, __) => const ProfilePage()),
           GoRoute(path: '/notifications', builder: (_, __) => const NotificationsPage()),
 
-          GoRoute(path: '/customers', builder: (_, __) => const CustomerListPage()),
+          GoRoute(path: '/customers', builder: (_, state) => CustomerListPage(initialStatus: state.uri.queryParameters['status'])),
           GoRoute(path: '/customers/new', builder: (_, __) => const CustomerFormPage()),
           GoRoute(path: '/customers/deleted', builder: (_, __) => const DeletedCustomersPage()),
           GoRoute(path: '/customers/:id', builder: (_, s) => CustomerDetailPage(id: s.pathParameters['id']!)),

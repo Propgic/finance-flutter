@@ -66,10 +66,9 @@ class DashboardPage extends ConsumerWidget {
       padding: const EdgeInsets.all(12),
       children: [
         _heroStats(d, isFieldOfficer: isFieldOfficer, features: features),
-        if (isFieldOfficer) ...[
-          _fieldOfficerStats(context, d),
-          _dailyCollectionChart(d),
-        ] else ...[
+        if (isFieldOfficer)
+          _fieldOfficerStats(context, d)
+        else ...[
           _daySummaryCard(d),
           if ((features['enableLoans'] == true) && role == 'ORG_ADMIN') _outstandingCard(d),
           if (features['enableSavings'] == true) _savingsPoolCard(d),
@@ -77,6 +76,7 @@ class DashboardPage extends ConsumerWidget {
         ],
         if (role == 'MANAGER') _todayLoansIssuedList(context, d),
         if (isFieldOfficer) _pendingVerificationList(d),
+        if (isFieldOfficer) _dailyCollectionChart(d),
         if (!isFieldOfficer) ...[
           if (features['enableLoans'] == true) _upcomingOverdueCard(context, d, isAdmin),
           if (isAdmin) _pendingVerificationByAgentCard(context, d),
@@ -163,7 +163,7 @@ class DashboardPage extends ConsumerWidget {
     );
   }
 
-  // === Field officer: 4 stat cards ===
+  // === Field officer: 4 gradient stat cards ===
   Widget _fieldOfficerStats(BuildContext context, Map<String, dynamic> d) {
     return GridView.count(
       crossAxisCount: 2,
@@ -173,19 +173,63 @@ class DashboardPage extends ConsumerWidget {
       crossAxisSpacing: 10,
       childAspectRatio: 1.3,
       children: [
-        _statTile("Today's Loan Issues", formatCurrency(d['todayLoanIssuedAmount'] ?? d['todayDisbursedAmount']),
-            subtitle: '${d['todayDisbursedCount'] ?? 0} loans', icon: Icons.payments, color: AppColors.accent,
+        _gradientStatTile("Today's Loan Issues", formatCurrency(d['todayLoanIssuedAmount'] ?? d['todayDisbursedAmount']),
+            subtitle: '${d['todayDisbursedCount'] ?? 0} loans', icon: Icons.payments,
+            gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
             onTap: () => context.push('/reports/loans')),
-        _statTile("Today's Collection", formatCurrency(d['totalCollectionsToday']),
-            icon: Icons.receipt_long, color: AppColors.warning,
+        _gradientStatTile("Today's Collection", formatCurrency(d['totalCollectionsToday']),
+            subtitle: '${d['todayCollectionsCount'] ?? 0} collected', icon: Icons.receipt_long,
+            gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFF97316)]),
             onTap: () => context.push('/collections')),
-        _statTile('Total Due to Company', formatCurrency(d['companyAmountInMarket']),
-            icon: Icons.trending_up, color: AppColors.danger,
+        _gradientStatTile('Due to Company', formatCurrency(d['companyAmountInMarket']),
+            subtitle: 'outstanding balance', icon: Icons.trending_up,
+            gradient: const LinearGradient(colors: [Color(0xFFF43F5E), Color(0xFFDC2626)]),
             onTap: () => context.push('/collections/verify')),
-        _statTile('Active Customers', '${d['activeCustomers'] ?? 0}',
-            subtitle: 'assigned to you', icon: Icons.people, color: AppColors.primary,
-            onTap: () => context.push('/customers')),
+        _gradientStatTile('Active Customers', '${d['activeCustomers'] ?? 0}',
+            subtitle: 'assigned to you', icon: Icons.people,
+            gradient: const LinearGradient(colors: [Color(0xFF3B82F6), Color(0xFF4F46E5)]),
+            onTap: () => context.push('/customers?status=active')),
       ],
+    );
+  }
+
+  Widget _gradientStatTile(String label, String value, {String? subtitle, required IconData icon, required LinearGradient gradient, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: gradient.colors.last.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
+        ),
+        child: Stack(
+          children: [
+            Positioned(right: -10, top: -10, child: Container(width: 60, height: 60, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.1)))),
+            Positioned(right: -4, bottom: -12, child: Container(width: 40, height: 40, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.1)))),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
+                  child: Icon(icon, color: Colors.white, size: 16),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.85))),
+                    const SizedBox(height: 2),
+                    Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
+                    if (subtitle != null) Text(subtitle, style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.7))),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -235,46 +279,6 @@ class DashboardPage extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Widget _statTile(String label, String value, {String? subtitle, required IconData icon, required Color color, VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-                  child: Icon(icon, size: 16, color: color),
-                ),
-              ],
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                if (subtitle != null) Text(subtitle, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    ));
   }
 
   // === Day summary card ===
@@ -497,30 +501,12 @@ class DashboardPage extends ConsumerWidget {
   }
 
   Widget _pendingVerificationByAgentCard(BuildContext context, Map<String, dynamic> d) {
-    final list = (d['pendingCollections'] as List?) ?? const [];
-    final Map<String, Map<String, dynamic>> byAgent = {};
-    for (final c in list) {
-      final m = Map<String, dynamic>.from(c as Map);
-      final agent = Map<String, dynamic>.from(m['collectedBy'] ?? {});
-      final id = m['collectedById']?.toString() ?? agent['name']?.toString() ?? 'Unknown';
-      final existing = byAgent[id];
-      final amt = toNum(m['amount']);
-      if (existing == null) {
-        byAgent[id] = {
-          'id': m['collectedById'],
-          'name': agent['name'] ?? 'Unknown',
-          'photo': agent['photo'],
-          'count': 1,
-          'total': amt,
-        };
-      } else {
-        existing['count'] = (existing['count'] as num) + 1;
-        existing['total'] = (existing['total'] as num) + amt;
-      }
-    }
-    final agents = byAgent.values.toList()..sort((a, b) => (b['total'] as num).compareTo(a['total'] as num));
+    // Use server-grouped pendingByAgent for accurate totals.
+    final agents = ((d['pendingByAgent'] as List?) ?? const [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
     return SectionCard(
-      title: 'Pending Verification (${d['pendingVerificationCount'] ?? list.length})',
+      title: 'Pending Verification (${d['pendingVerificationCount'] ?? 0})',
       actions: agents.isEmpty ? null : [TextButton(onPressed: () => context.push('/collections/verify'), child: const Text('Verify all'))],
       child: agents.isEmpty
           ? const EmptyView(message: 'No collections pending verification', icon: Icons.shield_outlined)
