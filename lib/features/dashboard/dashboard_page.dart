@@ -69,9 +69,10 @@ class DashboardPage extends ConsumerWidget {
         if (isFieldOfficer)
           _fieldOfficerStats(context, d)
         else ...[
+          _adminTopCards(context, d),
           _daySummaryCard(d),
           if ((features['enableLoans'] == true) && role == 'ORG_ADMIN') _outstandingCard(d),
-          if (features['enableSavings'] == true) _savingsPoolCard(d),
+          if (features['enableSavings'] == true) _savingsPoolGradientCard(d),
           _dayReportCard(d),
         ],
         if (role == 'MANAGER') _todayLoansIssuedList(context, d),
@@ -176,7 +177,7 @@ class DashboardPage extends ConsumerWidget {
         _gradientStatTile("Today's Loan Issues", formatCurrency(d['todayLoanIssuedAmount'] ?? d['todayDisbursedAmount']),
             subtitle: '${d['todayDisbursedCount'] ?? 0} loans', icon: Icons.payments,
             gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
-            onTap: () => context.push('/reports/loans')),
+            onTap: () { final t = formatInputDate(DateTime.now()); context.push('/loans?fromDate=$t&toDate=$t'); }),
         _gradientStatTile("Today's Collection", formatCurrency(d['totalCollectionsToday']),
             subtitle: '${d['todayCollectionsCount'] ?? 0} collected', icon: Icons.receipt_long,
             gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFF97316)]),
@@ -281,6 +282,76 @@ class DashboardPage extends ConsumerWidget {
     );
   }
 
+  // === Admin: 4 gradient top cards ===
+  Widget _adminTopCards(BuildContext context, Map<String, dynamic> d) {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.3,
+      children: [
+        _gradientStatTile("Today's Collection", formatCurrency(d['totalCollectionsToday']),
+            subtitle: '${d['todayCollectionsCount'] ?? 0} collections', icon: Icons.receipt_long,
+            gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
+            onTap: () => context.push('/collections')),
+        _gradientStatTile("Today's Loans", formatCurrency(d['todayLoanIssuedAmount'] ?? d['todayDisbursedAmount']),
+            subtitle: '${d['todayDisbursedCount'] ?? 0} disbursed', icon: Icons.payments,
+            gradient: const LinearGradient(colors: [Color(0xFF3B82F6), Color(0xFF2563EB)]),
+            onTap: () { final t = formatInputDate(DateTime.now()); context.push('/loans?fromDate=$t&toDate=$t'); }),
+        _gradientStatTile('Total Overdue', formatCurrency(d['totalOverdue']),
+            subtitle: 'outstanding', icon: Icons.warning_amber,
+            gradient: const LinearGradient(colors: [Color(0xFFF43F5E), Color(0xFFDC2626)]),
+            onTap: () => context.push('/loans/overdue')),
+        _gradientStatTile('Closing Balance', formatCurrency(d['closingBalance']),
+            subtitle: "today's P&L", icon: Icons.account_balance_wallet,
+            gradient: const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)]),
+            onTap: () => context.push('/reports/daily-cash')),
+      ],
+    );
+  }
+
+  Widget _savingsPoolGradientCard(Map<String, dynamic> d) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [Color(0xFFA855F7), Color(0xFFC026D3)]),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: const Color(0xFFA855F7).withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Stack(
+        children: [
+          Positioned(right: -10, top: -10, child: Container(width: 60, height: 60, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.1)))),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.savings, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Savings Pool', style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.85))),
+                    const SizedBox(height: 2),
+                    Text(formatCurrency(d['totalSavingsBalance']),
+                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+                    Text('${d['totalSavingsAccounts'] ?? 0} active accounts',
+                        style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.7))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   // === Day summary card ===
   Widget _daySummaryCard(Map<String, dynamic> d) {
     return SectionCard(
@@ -312,34 +383,7 @@ class DashboardPage extends ConsumerWidget {
     );
   }
 
-  Widget _savingsPoolCard(Map<String, dynamic> d) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.purple.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.savings, color: Colors.purple),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Savings Pool', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                  const SizedBox(height: 2),
-                  Text(formatCurrency(d['totalSavingsBalance']),
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // _savingsPoolCard removed — replaced by _savingsPoolGradientCard
 
   Widget _dayReportCard(Map<String, dynamic> d) {
     final openBal = toNum(d['openBalance']);

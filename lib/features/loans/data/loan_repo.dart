@@ -12,12 +12,16 @@ class LoanRepo {
     String? status,
     String? type,
     String? assignedToId,
+    String? fromDate,
+    String? toDate,
   }) async {
     final q = <String, dynamic>{'page': page, 'limit': limit};
     if (search?.isNotEmpty ?? false) q['search'] = search;
     if (status?.isNotEmpty ?? false) q['status'] = status;
     if (type?.isNotEmpty ?? false) q['loanType'] = type;
     if (assignedToId?.isNotEmpty ?? false) q['assignedToId'] = assignedToId;
+    if (fromDate?.isNotEmpty ?? false) q['fromDate'] = fromDate;
+    if (toDate?.isNotEmpty ?? false) q['toDate'] = toDate;
     final res = await api.raw(() => api.dio.get('/loans', queryParameters: q));
     return Map<String, dynamic>.from(res.data as Map);
   }

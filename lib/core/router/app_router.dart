@@ -90,7 +90,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/customers/:id', builder: (_, s) => CustomerDetailPage(id: s.pathParameters['id']!)),
           GoRoute(path: '/customers/:id/edit', builder: (_, s) => CustomerFormPage(id: s.pathParameters['id'])),
 
-          GoRoute(path: '/loans', builder: (_, __) => const LoanListPage()),
+          GoRoute(path: '/loans', builder: (_, state) => LoanListPage(fromDate: state.uri.queryParameters['fromDate'], toDate: state.uri.queryParameters['toDate'])),
           GoRoute(path: '/loans/new', builder: (_, __) => const LoanCreatePage()),
           GoRoute(path: '/loans/overdue', builder: (_, __) => const OverdueListPage()),
           GoRoute(path: '/loans/:id', builder: (_, s) => LoanDetailPage(id: s.pathParameters['id']!)),
