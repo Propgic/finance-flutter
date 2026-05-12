@@ -9,7 +9,8 @@ import '../../app_shell.dart';
 import '../../../core/widgets/app_bottom_nav.dart';
 
 class CustomerListPage extends ConsumerStatefulWidget {
-  const CustomerListPage({super.key});
+  final String? initialStatus;
+  const CustomerListPage({super.key, this.initialStatus});
   @override
   ConsumerState<CustomerListPage> createState() => _CustomerListPageState();
 }
@@ -28,6 +29,8 @@ class _CustomerListPageState extends ConsumerState<CustomerListPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialStatus == 'active') _active = true;
+    if (widget.initialStatus == 'inactive') _active = false;
     _scroll.addListener(() {
       if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 300 && !_loading && _hasMore) {
         _load();

@@ -48,7 +48,9 @@ const _statusDropdownOptions = [
 ];
 
 class LoanListPage extends ConsumerStatefulWidget {
-  const LoanListPage({super.key});
+  final String? fromDate;
+  final String? toDate;
+  const LoanListPage({super.key, this.fromDate, this.toDate});
   @override
   ConsumerState<LoanListPage> createState() => _LoanListPageState();
 }
@@ -62,15 +64,20 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
   bool _hasMore = true;
   String? _search;
   String? _typeTab;
-  String _statusTab = 'ACTIVE';
+  late String _statusTab;
   String? _statusFilter;
   String? _assigneeFilter;
+  String? _fromDate;
+  String? _toDate;
   List<Map<String, dynamic>> _assignees = [];
   Object? _error;
 
   @override
   void initState() {
     super.initState();
+    _fromDate = widget.fromDate;
+    _toDate = widget.toDate;
+    _statusTab = (_fromDate != null) ? 'ALL' : 'ACTIVE';
     _scroll.addListener(() {
       if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 300 && !_loading && _hasMore) {
         _load();
@@ -147,6 +154,8 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
             status: _resolvedStatus(),
             type: _typeTab,
             assignedToId: _assigneeFilter,
+            fromDate: _fromDate,
+            toDate: _toDate,
           );
       final data = (res['data'] as List?) ?? const [];
       final pg = Map<String, dynamic>.from(res['pagination'] ?? {});
