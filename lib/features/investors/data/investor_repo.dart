@@ -62,6 +62,10 @@ class InvestmentRepo {
     if (d is Map && d['data'] is List) return d['data'];
     return const [];
   }
+
+  Future<void> deleteInvestment(String id) async => api.delete('/investments/$id');
+  Future<void> deleteTransaction(String investmentId, String transactionId) async =>
+      api.delete('/investments/$investmentId/transactions/$transactionId');
 }
 
 final investorRepoProvider = Provider<InvestorRepo>((ref) => InvestorRepo(ref.read(apiClientProvider)));

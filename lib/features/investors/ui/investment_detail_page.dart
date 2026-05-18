@@ -57,6 +57,27 @@ class _InvestmentDetailPageState extends ConsumerState<InvestmentDetailPage> wit
     } on ApiException catch (e) { showToast(e.message, error: true); }
   }
 
+  Future<void> _deleteInvestment() async {
+    final ok = await confirmDialog(context, message: 'Permanently delete this investment and all its transactions?', destructive: true, confirmText: 'Delete');
+    if (!ok) return;
+    try {
+      await ref.read(investmentRepoProvider).deleteInvestment(widget.id);
+      showToast('Investment deleted');
+      if (mounted) Navigator.of(context).pop();
+    } on ApiException catch (e) { showToast(e.message, error: true); }
+  }
+
+  Future<void> _deleteTransaction(String txnId) async {
+    final ok = await confirmDialog(context, message: 'Delete this transaction?', destructive: true, confirmText: 'Delete');
+    if (!ok) return;
+    try {
+      await ref.read(investmentRepoProvider).deleteTransaction(widget.id, txnId);
+      ref.invalidate(investmentTxnsProvider(widget.id));
+      ref.invalidate(investmentDetailProvider(widget.id));
+      showToast('Transaction deleted');
+    } on ApiException catch (e) { showToast(e.message, error: true); }
+  }
+
   @override
   Widget build(BuildContext context) {
     final data = ref.watch(investmentDetailProvider(widget.id));
@@ -69,10 +90,12 @@ class _InvestmentDetailPageState extends ConsumerState<InvestmentDetailPage> wit
             onSelected: (v) {
               if (v == 'withdraw') _withdrawInterest();
               if (v == 'close') _close();
+              if (v == 'delete') _deleteInvestment();
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'withdraw', child: Text('Withdraw Interest')),
-              PopupMenuItem(value: 'close', child: Text('Close Investment')),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'withdraw', child: Text('Withdraw Interest')),
+              const PopupMenuItem(value: 'close', child: Text('Close Investment')),
+              PopupMenuItem(value: 'delete', child: const Text('Delete Investment'), textStyle: const TextStyle(color: AppColors.danger)),
             ],
           ),
         ],
@@ -143,7 +166,18 @@ class _InvestmentDetailPageState extends ConsumerState<InvestmentDetailPage> wit
               child: ListTile(
                 title: Text(t['type']?.toString() ?? ''),
                 subtitle: Text(formatDateTime(t['createdAt'])),
-                trailing: Text(formatCurrency(t['amount']), style: const TextStyle(fontWeight: FontWeight.w600)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(formatCurrency(t['amount']), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.danger),
+                      onPressed: () => _deleteTransaction(t['id'].toString()),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
               ),
             );
           },

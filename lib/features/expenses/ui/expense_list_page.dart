@@ -38,6 +38,12 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage> {
     setState(() {});
   }
 
+  bool _canEdit(Map<String, dynamic> e) {
+    final created = DateTime.tryParse(e['createdAt']?.toString() ?? '');
+    if (created == null) return false;
+    return DateTime.now().difference(created.toLocal()).inHours <= 24;
+  }
+
   void _changeMonth(int delta) {
     final m = DateTime(_monthStart.year, _monthStart.month + delta, 1);
     setState(() {
@@ -129,20 +135,29 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage> {
                             trailing: Text(formatCurrency(e['amount']), style: const TextStyle(fontWeight: FontWeight.w600)),
                             onTap: isMgr
                                 ? () async {
+                                    final canEdit = _canEdit(e);
                                     final action = await showModalBottomSheet<String>(
                                       context: context,
                                       builder: (_) => SafeArea(
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            ListTile(leading: const Icon(Icons.edit), title: const Text('Edit'), onTap: () => Navigator.pop(context, 'edit')),
+                                            if (canEdit)
+                                              ListTile(leading: const Icon(Icons.edit), title: const Text('Edit'), onTap: () => Navigator.pop(context, 'edit'))
+                                            else
+                                              ListTile(
+                                                leading: const Icon(Icons.lock_outline, color: AppColors.textSecondary),
+                                                title: const Text('Edit', style: TextStyle(color: AppColors.textSecondary)),
+                                                subtitle: const Text('Locked after 24 hours', style: TextStyle(fontSize: 11)),
+                                                enabled: false,
+                                              ),
                                             ListTile(leading: const Icon(Icons.delete, color: AppColors.danger), title: const Text('Delete'), onTap: () => Navigator.pop(context, 'delete')),
                                           ],
                                         ),
                                       ),
                                     );
                                     if (action == 'edit') {
-                                      if (mounted) context.push('/expenses/${e['id']}/edit');
+                                      if (canEdit && mounted) context.push('/expenses/${e['id']}/edit');
                                     } else if (action == 'delete') {
                                       final ok = await confirmDialog(context, message: 'Delete expense?', destructive: true, confirmText: 'Delete');
                                       if (!ok) return;

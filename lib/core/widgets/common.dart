@@ -118,7 +118,8 @@ class KeyValueRow extends StatelessWidget {
   final String value;
   final Widget? trailing;
   final VoidCallback? onTap;
-  const KeyValueRow({super.key, required this.label, required this.value, this.trailing, this.onTap});
+  final Color? valueColor;
+  const KeyValueRow({super.key, required this.label, required this.value, this.trailing, this.onTap, this.valueColor});
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -136,7 +137,7 @@ class KeyValueRow extends StatelessWidget {
                     onTap: onTap,
                     child: Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.primary, decoration: TextDecoration.underline)),
                   )
-                : Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                : Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: valueColor)),
           ),
           if (trailing != null) trailing!,
         ],

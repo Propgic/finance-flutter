@@ -146,6 +146,22 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
               KeyValueRow(label: 'Start Date', value: formatDate(l['startDate'])),
               KeyValueRow(label: 'Disbursed', value: formatDate(l['disbursedDate'])),
               KeyValueRow(label: 'Maturity', value: formatDate(l['maturityDate'])),
+              if (l['disbursedDate'] != null)
+                KeyValueRow(
+                  label: 'Day',
+                  value: () {
+                    final disbursed = DateTime.tryParse(l['disbursedDate'].toString());
+                    if (disbursed == null) return '-';
+                    final days = DateTime.now().difference(disbursed).inDays + 1;
+                    if (days <= 0) return '-';
+                    if (l['loanType'] == 'WEEKLY') {
+                      final weeks = days ~/ 7;
+                      return weeks < 1 ? '-' : 'Week $weeks';
+                    }
+                    return 'Day $days';
+                  }(),
+                  valueColor: const Color(0xFFEA580C),
+                ),
             ],
           ),
         ),
