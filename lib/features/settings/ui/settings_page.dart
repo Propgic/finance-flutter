@@ -34,6 +34,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _saving = false;
   File? _logoFile;
 
+  static const _loanTypes = <List<String>>[
+    ['PERSONAL', 'Personal'],
+    ['GOLD', 'Gold'],
+    ['VEHICLE', 'Vehicle'],
+    ['PROPERTY', 'Property/Mortgage'],
+    ['BUSINESS', 'Business'],
+    ['AGRICULTURE', 'Agriculture'],
+    ['EDUCATION', 'Education'],
+    ['DAILY', 'Daily'],
+    ['WEEKLY', 'Weekly'],
+    ['GROUP', 'Group'],
+  ];
+  static const _policyValues = ['REQUIRED', 'OPTIONAL', 'HIDDEN'];
+  String _suretyDefault = 'OPTIONAL';
+  final Map<String, String> _suretyByType = {};
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +75,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         _loanPrefix.text = s['loanNumberPrefix']?.toString() ?? '';
         _defaultRate.text = s['defaultInterestRate']?.toString() ?? '';
         _defaultLateFee.text = s['defaultLateFee']?.toString() ?? '';
+        final policy = (s['suretyPolicy'] as Map?) ?? const {};
+        _suretyDefault = _policyValues.contains(policy['default']) ? policy['default'] as String : 'OPTIONAL';
+        _suretyByType.clear();
+        final by = (policy['byLoanType'] as Map?) ?? const {};
+        by.forEach((k, v) {
+          if (v is String && _policyValues.contains(v)) _suretyByType[k.toString()] = v;
+        });
         _hydrated = true;
       }
       if (mounted) setState(() { _settings = s; _features = f; _loading = false; });
@@ -85,6 +108,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         'loanNumberPrefix': _loanPrefix.text.trim(),
         if (_defaultRate.text.trim().isNotEmpty) 'defaultInterestRate': double.tryParse(_defaultRate.text.trim()),
         if (_defaultLateFee.text.trim().isNotEmpty) 'defaultLateFee': double.tryParse(_defaultLateFee.text.trim()),
+        'suretyPolicy': {
+          'default': _suretyDefault,
+          'byLoanType': Map<String, String>.from(_suretyByType),
+        },
       });
       if (_logoFile != null) {
         final form = FormData.fromMap({'logo': await MultipartFile.fromFile(_logoFile!.path)});
@@ -199,6 +226,35 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ],
           ),
         ),
+        SectionCard(
+          title: 'Surety / Guarantor Policy',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Control whether surety info is required, optional, or hidden when creating a loan. The default applies to any loan type not set explicitly.',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                ),
+              ),
+              _suretyRow('Default (all types)', null, _suretyDefault, (v) => setState(() => _suretyDefault = v)),
+              const Divider(),
+              ..._loanTypes.map((lt) => _suretyRow(
+                    lt[1],
+                    lt[0],
+                    _suretyByType[lt[0]] ?? _suretyDefault,
+                    (v) => setState(() {
+                      if (v == _suretyDefault) {
+                        _suretyByType.remove(lt[0]);
+                      } else {
+                        _suretyByType[lt[0]] = v;
+                      }
+                    }),
+                  )),
+            ],
+          ),
+        ),
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
@@ -235,6 +291,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _suretyRow(String label, String? loanType, String value, ValueChanged<String> onChanged) {
+    final overridden = loanType != null && _suretyByType.containsKey(loanType);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(fontWeight: loanType == null || overridden ? FontWeight.w600 : FontWeight.normal),
+            ),
+          ),
+          DropdownButton<String>(
+            value: value,
+            underline: const SizedBox.shrink(),
+            items: _policyValues
+                .map((v) => DropdownMenuItem(value: v, child: Text(v[0] + v.substring(1).toLowerCase())))
+                .toList(),
+            onChanged: (v) { if (v != null) onChanged(v); },
+          ),
+        ],
+      ),
     );
   }
 

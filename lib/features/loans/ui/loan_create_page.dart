@@ -38,6 +38,27 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
   final _guarantorName = TextEditingController();
   final _guarantorPhone = TextEditingController();
   bool _saving = false;
+  Map<String, String> _suretyByType = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSuretyPolicy();
+  }
+
+  Future<void> _loadSuretyPolicy() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      final res = await api.get('/settings/surety-policy') as Map;
+      final by = Map<String, dynamic>.from(res['byLoanType'] ?? const {});
+      if (!mounted) return;
+      setState(() => _suretyByType = {for (final e in by.entries) e.key: e.value.toString()});
+    } catch (_) {
+      // Falls back to OPTIONAL — guarantor section stays visible/optional.
+    }
+  }
+
+  String get _suretyPolicy => _suretyByType[_loanType] ?? 'OPTIONAL';
 
   Future<void> _pickCustomer() async {
     final picked = await showModalBottomSheet<Map<String, dynamic>>(
@@ -88,6 +109,10 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
     if (!_formKey.currentState!.validate()) return;
     if (_customer == null) return showToast('Select a customer', error: true);
     if (_assignee == null) return showToast('Assign to a team member', error: true);
+    if (_suretyPolicy == 'REQUIRED' &&
+        (_guarantorName.text.trim().isEmpty || _guarantorPhone.text.trim().isEmpty)) {
+      return showToast('Surety name and phone are required for this loan type', error: true);
+    }
     setState(() => _saving = true);
     try {
       final body = <String, dynamic>{
@@ -281,16 +306,26 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
                   ],
                 ),
               ),
-            SectionCard(
-              title: 'Guarantor (optional)',
-              child: Column(
-                children: [
-                  TextFormField(controller: _guarantorName, decoration: const InputDecoration(labelText: 'Name')),
-                  const SizedBox(height: 10),
-                  TextFormField(controller: _guarantorPhone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone')),
-                ],
+            if (_suretyPolicy != 'HIDDEN')
+              SectionCard(
+                title: _suretyPolicy == 'REQUIRED' ? 'Surety / Guarantor *' : 'Surety / Guarantor (optional)',
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: _guarantorName,
+                      decoration: InputDecoration(labelText: 'Name${_suretyPolicy == 'REQUIRED' ? ' *' : ''}'),
+                      validator: (v) => _suretyPolicy == 'REQUIRED' && (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: _guarantorPhone,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(labelText: 'Phone${_suretyPolicy == 'REQUIRED' ? ' *' : ''}'),
+                      validator: (v) => _suretyPolicy == 'REQUIRED' && (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    ),
+                  ],
+                ),
               ),
-            ),
             SectionCard(
               title: 'Notes',
               child: TextFormField(controller: _notes, maxLines: 3, decoration: const InputDecoration(hintText: 'Additional notes')),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../data/expense_repo.dart';
@@ -93,12 +94,10 @@ class _ExpenseReportPageState extends ConsumerState<ExpenseReportPage> {
                         ..._expenses.map((item) {
                           final e = Map<String, dynamic>.from(item as Map);
                           return Card(
-                            margin: const EdgeInsets.only(bottom: 6),
-                            child: ListTile(
-                              dense: true,
-                              title: Text(e['category']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                              subtitle: Text('${formatDate(e['expenseDate'])} • ${e['paymentMode'] ?? ''} ${e['user'] != null ? '• ${(e['user'] as Map)['name'] ?? ''}' : ''}', style: const TextStyle(fontSize: 11)),
-                              trailing: Text(formatCurrency(e['amount']), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFE11D48), fontSize: 13)),
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: _expenseCard(e),
                             ),
                           );
                         }),
@@ -147,6 +146,98 @@ class _ExpenseReportPageState extends ConsumerState<ExpenseReportPage> {
           Text(formatCurrency(amount), style: TextStyle(fontSize: 15, color: color, fontWeight: FontWeight.bold)),
         ],
       ),
+    );
+  }
+
+  Widget _expenseCard(Map<String, dynamic> e) {
+    final user = e['user'] is Map ? Map<String, dynamic>.from(e['user'] as Map) : null;
+    final recordedBy = e['recordedBy'] is Map ? Map<String, dynamic>.from(e['recordedBy'] as Map) : null;
+    final description = e['description']?.toString().trim();
+    final month = e['month']?.toString();
+    final paymentMode = e['paymentMode']?.toString();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  e['category']?.toString() ?? '',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppColors.primary),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              formatCurrency(e['amount']),
+              style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.danger, fontSize: 14),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (user != null) _personRow('Team Member', user),
+        if (recordedBy != null) ...[
+          if (user != null) const SizedBox(height: 6),
+          _personRow('Entered By', recordedBy),
+        ],
+        if (user != null || recordedBy != null) const SizedBox(height: 8),
+        Wrap(
+          spacing: 10,
+          runSpacing: 4,
+          children: [
+            _meta(Icons.calendar_today_outlined, formatDate(e['expenseDate'])),
+            if (month != null && month.isNotEmpty) _meta(Icons.event_outlined, month),
+            if (paymentMode != null && paymentMode.isNotEmpty) _meta(Icons.payment_outlined, paymentMode),
+          ],
+        ),
+        if (description != null && description.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(description, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ],
+      ],
+    );
+  }
+
+  Widget _personRow(String label, Map<String, dynamic> person) {
+    final photo = resolveUrl(person['photo']?.toString());
+    final name = person['name']?.toString() ?? '';
+    return Row(
+      children: [
+        if (photo != null)
+          CircleAvatar(radius: 12, backgroundImage: NetworkImage(photo))
+        else
+          CircleAvatar(
+            radius: 12,
+            backgroundColor: Colors.grey.shade200,
+            child: Text(
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+            ),
+          ),
+        const SizedBox(width: 8),
+        Text('$label: ', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        Expanded(child: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
+      ],
+    );
+  }
+
+  Widget _meta(IconData icon, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: AppColors.textSecondary),
+        const SizedBox(width: 4),
+        Text(text, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+      ],
     );
   }
 
