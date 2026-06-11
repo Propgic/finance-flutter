@@ -24,7 +24,7 @@ const _navItems = <NavItem>[
   NavItem('Savings', Icons.savings_outlined, '/savings', featureFlag: 'enableSavings', permission: 'savings.view'),
   NavItem('Chitfunds', Icons.account_balance_wallet_outlined, '/chitfunds', featureFlag: 'enableChitfund', permission: 'chitfunds.view'),
   NavItem('Investors', Icons.trending_up, '/investors', featureFlag: 'enableInvestments', permission: 'investors.view'),
-  NavItem('Expenses', Icons.receipt_long_outlined, '/expenses', featureFlag: 'enableExpenses'),
+  NavItem('Expenses', Icons.receipt_long_outlined, '/expenses', featureFlag: 'enableExpenses', permission: 'expenses.view'),
   NavItem('Reports', Icons.bar_chart_outlined, '/reports', featureFlag: 'enableReports', permission: 'reports.view'),
   NavItem('Team', Icons.group_outlined, '/team', permission: 'team.view'),
   NavItem('Settings', Icons.settings_outlined, '/settings', role: 'ORG_ADMIN'),

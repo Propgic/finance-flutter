@@ -379,6 +379,15 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
           children: [
             Row(
               children: [
+                GestureDetector(
+                  onTap: () => showImageViewer(context, c['photo']?.toString()),
+                  child: Avatar(
+                    url: c['photo']?.toString(),
+                    name: '${c['firstName'] ?? ''} ${c['lastName'] ?? ''}'.trim(),
+                    size: 48,
+                  ),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

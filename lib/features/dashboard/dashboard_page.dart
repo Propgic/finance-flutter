@@ -110,22 +110,23 @@ class DashboardPage extends ConsumerWidget {
       _HeroStat("Today's Loans", formatCurrency(d['todayLoanIssuedAmount'] ?? d['todayDisbursedAmount']),
           icon: Icons.payments, gradient: AppGradients.warning, sub: '${d['todayDisbursedCount'] ?? 0} loans'),
     ];
-    return SizedBox(
-      height: 140,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (ctx, i) => _heroCard(items[i]),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            _heroCard(items[i]),
+          ],
+        ],
       ),
     );
   }
 
   Widget _heroCard(_HeroStat s) {
     return Container(
-      width: 180,
-      padding: const EdgeInsets.all(12),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         gradient: s.gradient,
         borderRadius: BorderRadius.circular(16),
@@ -137,27 +138,29 @@ class DashboardPage extends ConsumerWidget {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.22), borderRadius: BorderRadius.circular(10)),
-            child: Icon(s.icon, color: Colors.white, size: 18),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.22), borderRadius: BorderRadius.circular(12)),
+            child: Icon(s.icon, color: Colors.white, size: 22),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(s.label, style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.85))),
-              const SizedBox(height: 2),
-              Text(s.value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.3)),
-              if (s.sub != null)
-                Text(s.sub!, style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.75))),
-            ],
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(s.label, style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.85))),
+                const SizedBox(height: 2),
+                Text(s.value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.3)),
+                if (s.sub != null)
+                  Text(s.sub!, style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.75))),
+              ],
+            ),
           ),
         ],
       ),

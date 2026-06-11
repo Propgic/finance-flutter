@@ -221,6 +221,57 @@ class Avatar extends StatelessWidget {
   }
 }
 
+void showImageViewer(BuildContext context, String? url, {String? heroTag}) {
+  final resolved = resolveUrl(url);
+  if (resolved == null) return;
+  Navigator.of(context).push(PageRouteBuilder(
+    opaque: false,
+    barrierColor: Colors.black.withValues(alpha: 0.9),
+    pageBuilder: (ctx, _, _) => _ImageViewerPage(url: resolved, heroTag: heroTag),
+  ));
+}
+
+class _ImageViewerPage extends StatelessWidget {
+  final String url;
+  final String? heroTag;
+  const _ImageViewerPage({required this.url, this.heroTag});
+  @override
+  Widget build(BuildContext context) {
+    final image = InteractiveViewer(
+      minScale: 1,
+      maxScale: 5,
+      child: Center(
+        child: CachedNetworkImage(
+          imageUrl: url,
+          fit: BoxFit.contain,
+          placeholder: (_, _) => const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          errorWidget: (_, _, _) => const Icon(Icons.broken_image, color: Colors.white54, size: 48),
+        ),
+      ),
+    );
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Container(color: Colors.transparent, width: double.infinity, height: double.infinity),
+          ),
+          Positioned.fill(child: heroTag != null ? Hero(tag: heroTag!, child: image) : image),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 4,
+            right: 8,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 28),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 Future<bool> confirmDialog(BuildContext context, {String title = 'Confirm', required String message, String confirmText = 'Confirm', bool destructive = false}) async {
   final res = await showDialog<bool>(
     context: context,
