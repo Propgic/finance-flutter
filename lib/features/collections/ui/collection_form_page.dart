@@ -6,6 +6,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/location.dart';
 import '../../../core/widgets/common.dart';
 import '../data/collection_repo.dart';
 import '../../loans/data/loan_repo.dart';
@@ -158,11 +159,14 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
     if (amount == null || amount <= 0) return showToast('Enter valid amount', error: true);
     setState(() => _saving = true);
     try {
+      // Best-effort GPS — never blocks recording if unavailable.
+      final location = await tryGetCurrentLocation();
       final res = await ref.read(collectionRepoProvider).create({
         'loanId': _selectedLoan!['id'],
         'amount': amount,
         'paymentMode': _mode,
         if (_notesCtrl.text.trim().isNotEmpty) 'notes': _notesCtrl.text.trim(),
+        if (location != null) ...location.toJson(),
       });
       showToast('Collection recorded');
       if (mounted) context.pushReplacement('/collections/${res['id']}/receipt');

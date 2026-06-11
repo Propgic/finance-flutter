@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/location.dart';
 import '../../../core/widgets/common.dart';
 import '../data/collection_repo.dart';
 import '../../loan_groups/data/loan_group_repo.dart';
@@ -57,11 +58,14 @@ class _GroupCollectionPageState extends ConsumerState<GroupCollectionPage> {
     if (collections.isEmpty) return showToast('Enter at least one amount', error: true);
     setState(() => _saving = true);
     try {
+      // Best-effort GPS for the meeting — applies to every member's collection, never blocks.
+      final location = await tryGetCurrentLocation();
       await ref.read(collectionRepoProvider).createGroup({
         'groupId': _group!['id'],
         'paymentMode': _mode,
         if (_reference.text.trim().isNotEmpty) 'paymentReference': _reference.text.trim(),
         'collections': collections,
+        if (location != null) ...location.toJson(),
       });
       showToast('Group collection recorded');
       if (mounted) context.go('/collections');

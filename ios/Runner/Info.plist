@@ -32,6 +32,8 @@
 	<string>Use Face ID to sign in quickly and securely.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app requires access to your photo library to allow you to upload and share photos.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Your location is recorded when you collect a payment, to verify where the collection was made.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
