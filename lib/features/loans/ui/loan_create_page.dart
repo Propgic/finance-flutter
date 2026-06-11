@@ -89,7 +89,10 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
           final api = ref.read(apiClientProvider);
           final d = await api.get('/team');
           final list = d is List ? d : (d is Map && d['data'] is List ? d['data'] : const []);
-          var users = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          var users = list
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .where((u) => u['isActive'] == true && u['role'] == 'FIELD_OFFICER')
+              .toList();
           if (search.isNotEmpty) {
             users = users.where((u) {
               final nm = (u['name']?.toString() ?? '').toLowerCase();
@@ -99,7 +102,7 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
           return users;
         },
         labelBuilder: (m) => m['name']?.toString() ?? '',
-        subtitleBuilder: (m) => m['role']?.toString() ?? '',
+        subtitleBuilder: (m) => m['phone']?.toString() ?? '',
       ),
     );
     if (picked != null) setState(() => _assignee = picked);
@@ -108,7 +111,15 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_customer == null) return showToast('Select a customer', error: true);
-    if (_assignee == null) return showToast('Assign to a team member', error: true);
+    if (_assignee == null) {
+      final proceed = await confirmDialog(
+        context,
+        title: 'Continue without assignee?',
+        message: 'No team member is assigned to this loan. You can assign one later. Continue?',
+        confirmText: 'Continue',
+      );
+      if (!proceed) return;
+    }
     if (_suretyPolicy == 'REQUIRED' &&
         (_guarantorName.text.trim().isEmpty || _guarantorPhone.text.trim().isEmpty)) {
       return showToast('Surety name and phone are required for this loan type', error: true);
@@ -117,7 +128,7 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
     try {
       final body = <String, dynamic>{
         'customerId': _customer!['id'],
-        'assignedToId': _assignee!['id'],
+        if (_assignee != null) 'assignedToId': _assignee!['id'],
         'loanType': _loanType,
         'principalAmount': double.tryParse(_principal.text),
         'interestRate': double.tryParse(_rate.text),
@@ -180,8 +191,8 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.assignment_ind),
-                    title: Text(_assignee == null ? 'Assign To *' : _assignee!['name']?.toString() ?? ''),
-                    subtitle: _assignee == null ? null : Text(_assignee!['role']?.toString() ?? ''),
+                    title: Text(_assignee == null ? 'Assign To' : _assignee!['name']?.toString() ?? ''),
+                    subtitle: _assignee == null ? null : Text(_assignee!['phone']?.toString() ?? ''),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: _pickAssignee,
                   ),

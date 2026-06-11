@@ -7,6 +7,27 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../data/collection_repo.dart';
 
+const _loanTypeLabels = {
+  'PERSONAL': 'Personal',
+  'GOLD': 'Gold',
+  'GROUP': 'Group',
+  'VEHICLE': 'Vehicle',
+  'PROPERTY': 'Property',
+  'BUSINESS': 'Business',
+  'AGRICULTURE': 'Agriculture',
+  'EDUCATION': 'Education',
+  'DAILY': 'Daily',
+  'WEEKLY': 'Weekly',
+};
+
+const _paymentModeLabels = {
+  'CASH': 'Cash',
+  'UPI': 'UPI',
+  'BANK_TRANSFER': 'Bank',
+  'CHEQUE': 'Cheque',
+  'ONLINE': 'Online',
+};
+
 class VerifyCollectionsPage extends ConsumerStatefulWidget {
   const VerifyCollectionsPage({super.key});
   @override
@@ -84,6 +105,15 @@ class _VerifyCollectionsPageState extends ConsumerState<VerifyCollectionsPage> {
     );
   }
 
+  Widget _miniBadge(String label, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
+  );
+
   Widget _metricCard(String label, String value, Color color) => Expanded(
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -118,15 +148,38 @@ class _VerifyCollectionsPageState extends ConsumerState<VerifyCollectionsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                GestureDetector(
+                  onTap: () => showImageViewer(context, cust['photo']?.toString()),
+                  child: Avatar(
+                    url: cust['photo']?.toString(),
+                    name: '${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}'.trim(),
+                    size: 44,
+                  ),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}'.trim(),
                           style: const TextStyle(fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          if (loan['loanType'] != null)
+                            _miniBadge(_loanTypeLabels[loan['loanType']?.toString()] ?? loan['loanType'].toString(), const Color(0xFF7C3AED)),
+                          if (c['paymentMode'] != null)
+                            _miniBadge(_paymentModeLabels[c['paymentMode']?.toString()] ?? c['paymentMode'].toString(), AppColors.primary),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
                       Row(children: [
-                        Text(loan['loanNumber']?.toString() ?? '', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        Flexible(child: Text(loan['loanNumber']?.toString() ?? '', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis)),
                         if (loan['id'] != null) ...[
                           const SizedBox(width: 6),
                           GestureDetector(
@@ -138,6 +191,7 @@ class _VerifyCollectionsPageState extends ConsumerState<VerifyCollectionsPage> {
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
                 Text(formatCurrency(c['amount']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
               ],
             ),
