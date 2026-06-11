@@ -47,6 +47,11 @@ class CollectionRepo {
 
   Future<void> createGroup(Map<String, dynamic> body) async => api.post('/collections/group', data: body);
 
+  Future<Map<String, dynamic>> update(String id, {required num amount, String? notes}) async {
+    final d = await api.put('/collections/$id', data: {'amount': amount, if (notes != null) 'notes': notes});
+    return Map<String, dynamic>.from(d as Map);
+  }
+
   Future<void> verify(String id, {required bool approve, String? remarks}) async {
     await api.patch('/collections/$id/verify', data: {'approve': approve, if (remarks != null) 'remarks': remarks});
   }

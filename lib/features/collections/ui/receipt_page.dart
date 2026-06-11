@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/api/api_client.dart';
+import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
@@ -21,6 +23,50 @@ class _ReceiptPageState extends ConsumerState<ReceiptPage> {
     _future = ref.read(collectionRepoProvider).getReceipt(widget.id);
   }
 
+  Future<void> _editAmount(Map<String, dynamic> collection) async {
+    final amountCtrl = TextEditingController(text: (collection['amount'] ?? '').toString());
+    final notesCtrl = TextEditingController(text: collection['notes']?.toString() ?? '');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Amount'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: amountCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Amount', prefixText: '₹ '),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: notesCtrl,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (saved != true) return;
+    final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
+    if (amount <= 0) return showToast('Enter a valid amount', error: true);
+    try {
+      await ref.read(collectionRepoProvider).update(
+            widget.id,
+            amount: amount,
+            notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+          );
+      showToast('Collection amount updated');
+      if (mounted) setState(() => _future = ref.read(collectionRepoProvider).getReceipt(widget.id));
+    } on ApiException catch (e) {
+      showToast(e.message, error: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -40,9 +86,25 @@ class _ReceiptPageState extends ConsumerState<ReceiptPage> {
           final loan = Map<String, dynamic>.from(collection['loan'] ?? {});
           final orgRaw = r['org'] ?? r['organization'];
           final org = Map<String, dynamic>.from(orgRaw is Map ? orgRaw : {});
+          final auth = ref.watch(authProvider);
+          final role = auth.user?.role;
+          final isPending = (collection['verificationStatus']?.toString() ?? '') == 'PENDING';
+          final canEdit = isPending &&
+              (role == 'ORG_ADMIN' ||
+                  role == 'MANAGER' ||
+                  (role == 'FIELD_OFFICER' && collection['collectedById'] == auth.user?.id));
           return ListView(
             padding: const EdgeInsets.all(14),
             children: [
+              if (canEdit)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: OutlinedButton.icon(
+                    onPressed: () => _editAmount(collection),
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Edit Amount'),
+                  ),
+                ),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
