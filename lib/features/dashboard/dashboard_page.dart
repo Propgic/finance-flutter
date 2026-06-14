@@ -62,108 +62,33 @@ class DashboardPage extends ConsumerWidget {
     final isAdmin = role == 'ORG_ADMIN' || role == 'MANAGER';
     final features = auth.org?.features ?? const {};
 
+    // Layout mirrors the web dashboard's mobile-responsive view exactly:
+    // a 2-column gradient stat grid followed by single-column stacked cards.
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        _heroStats(d, isFieldOfficer: isFieldOfficer, features: features),
-        if (isFieldOfficer)
-          _fieldOfficerStats(context, d)
-        else ...[
+        if (isFieldOfficer) ...[
+          _fieldOfficerStats(context, d),
+          _pendingVerificationList(d),
+          _overdueLoansList(context, d),
+          _dailyCollectionChart(d),
+        ] else ...[
           _adminTopCards(context, d),
           _daySummaryCard(d),
           if ((features['enableLoans'] == true) && role == 'ORG_ADMIN') _outstandingCard(d),
-          if (features['enableSavings'] == true) _savingsPoolGradientCard(d),
           _dayReportCard(d),
-        ],
-        if (role == 'MANAGER') _todayLoansIssuedList(context, d),
-        if (isFieldOfficer) _pendingVerificationList(d),
-        if (isFieldOfficer) _dailyCollectionChart(d),
-        if (!isFieldOfficer) ...[
+          if (features['enableSavings'] == true) _savingsPoolGradientCard(d),
           if (features['enableLoans'] == true) _upcomingOverdueCard(context, d, isAdmin),
           if (isAdmin) _pendingVerificationByAgentCard(context, d),
-          if (features['enableLoans'] == true && !isFieldOfficer) ...[
+          if (features['enableLoans'] == true) ...[
             _loansByTypeCard(d),
             _loansByStatusCard(d),
-          ],
-          if (features['enableLoans'] == true) ...[
             _monthlyCollectionsChart(d),
             _monthlyDisbursementsChart(d),
           ],
         ],
         const SizedBox(height: 24),
       ],
-    );
-  }
-
-  // === Hero gradient stats strip ===
-  Widget _heroStats(Map<String, dynamic> d, {required bool isFieldOfficer, required Map features}) {
-    final items = <_HeroStat>[
-      _HeroStat("Today's Collection", formatCurrency(d['totalCollectionsToday']),
-          icon: Icons.receipt_long, gradient: AppGradients.accent, sub: '${d['todayCollectionsCount'] ?? 0} collections'),
-      _HeroStat('Market Outstanding', formatCurrency(d['companyAmountInMarket']),
-          icon: Icons.trending_up, gradient: AppGradients.primary),
-      _HeroStat('Overdue', formatCurrency(d['totalOverdue']),
-          icon: Icons.warning_amber, gradient: AppGradients.danger),
-      if (features['enableSavings'] == true)
-        _HeroStat('Savings Pool', formatCurrency(d['totalSavingsBalance']),
-            icon: Icons.savings, gradient: AppGradients.purple),
-      _HeroStat("Today's Loans", formatCurrency(d['todayLoanIssuedAmount'] ?? d['todayDisbursedAmount']),
-          icon: Icons.payments, gradient: AppGradients.warning, sub: '${d['todayDisbursedCount'] ?? 0} loans'),
-    ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        children: [
-          for (var i = 0; i < items.length; i++) ...[
-            if (i > 0) const SizedBox(height: 10),
-            _heroCard(items[i]),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _heroCard(_HeroStat s) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: s.gradient,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: s.gradient.colors.last.withValues(alpha: 0.35),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.22), borderRadius: BorderRadius.circular(12)),
-            child: Icon(s.icon, color: Colors.white, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(s.label, style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.85))),
-                const SizedBox(height: 2),
-                Text(s.value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.3)),
-                if (s.sub != null)
-                  Text(s.sub!, style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.75))),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -361,11 +286,13 @@ class DashboardPage extends ConsumerWidget {
       title: 'Day Summary',
       child: Column(
         children: [
-          _kvRow('Today\'s Collection', formatCurrency(d['totalCollectionsToday']), color: AppColors.accent),
+          _kvRow('Collection', formatCurrency(d['totalCollectionsToday']), color: AppColors.accent),
           const Divider(height: 1),
-          _kvRow('Today\'s Loans Issued', formatCurrency(d['todayLoanIssuedAmount'] ?? d['todayDisbursedAmount'])),
+          _kvRow('Loans Issued', formatCurrency(d['todayLoanIssuedAmount'] ?? d['todayDisbursedAmount']), color: AppColors.primary),
           const Divider(height: 1),
-          _kvRow('Today\'s Expenses', formatCurrency(d['todayExpensesAmount']), color: AppColors.danger),
+          _kvRow('Expenses', formatCurrency(d['todayExpensesAmount']), color: AppColors.danger),
+          const Divider(height: 1),
+          _kvRow('Investment', formatCurrency(d['todayInvestmentAmount'])),
         ],
       ),
     );
@@ -378,9 +305,9 @@ class DashboardPage extends ConsumerWidget {
         children: [
           _kvRow('Total Loans Issued', formatCurrency(d['totalActiveLoansIssued'])),
           const Divider(height: 1),
-          _kvRow('Total Amount Collected', formatCurrency(d['totalActiveLoansCollected'])),
+          _kvRow('Total Collected', formatCurrency(d['totalActiveLoansCollected']), color: AppColors.accent),
           const Divider(height: 1),
-          _kvRow('Total Amount In Market', formatCurrency(d['companyAmountInMarket']), color: AppColors.danger),
+          _kvRow('Amount In Market', formatCurrency(d['companyAmountInMarket']), color: AppColors.danger),
         ],
       ),
     );
@@ -391,18 +318,40 @@ class DashboardPage extends ConsumerWidget {
   Widget _dayReportCard(Map<String, dynamic> d) {
     final openBal = toNum(d['openBalance']);
     final closing = toNum(d['closingBalance']);
+    final withdrawals = toNum(d['todayInvestmentWithdrawalsAmount']);
+    final inflow = toNum(d['totalCollectionsToday']) + toNum(d['todayInvestmentAmount']);
+    final outflow = toNum(d['todayDisbursedAmount']) + toNum(d['todayExpensesAmount']) + withdrawals;
     return SectionCard(
       title: 'Day Report',
       child: Column(
         children: [
           _kvRow('Open Balance', formatCurrency(openBal), color: openBal < 0 ? AppColors.danger : null),
-          _kvRow('Day Investment', formatCurrency(d['todayInvestmentAmount'])),
-          _kvRow('Day Collection', formatCurrency(d['totalCollectionsToday'])),
-          _kvRow('Day Loan Issue', formatCurrency(d['todayDisbursedAmount'])),
-          _kvRow('Day Expenses', formatCurrency(d['todayExpensesAmount'])),
-          const Divider(),
-          _kvRow('Closing Balance', formatCurrency(closing),
-              color: closing < 0 ? AppColors.danger : AppColors.accent, bold: true),
+          const Divider(height: 1),
+          _kvRow('Inflow', formatCurrency(inflow), color: AppColors.accent),
+          const Divider(height: 1),
+          _kvRow('Outflow', formatCurrency(outflow), color: AppColors.danger),
+          if (withdrawals > 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, top: 2, bottom: 2),
+              child: Row(
+                children: [
+                  Expanded(child: Text('Investment Withdrawals', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary))),
+                  Text(formatCurrency(withdrawals), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.danger)),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(color: AppColors.bg, borderRadius: BorderRadius.circular(10)),
+            child: Row(
+              children: [
+                const Expanded(child: Text('Closing Balance', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800))),
+                Text(formatCurrency(closing),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: closing < 0 ? AppColors.danger : AppColors.accent)),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -426,30 +375,6 @@ class DashboardPage extends ConsumerWidget {
   }
 
   // === Lists ===
-  Widget _todayLoansIssuedList(BuildContext context, Map<String, dynamic> d) {
-    final loans = (d['todayDisbursedLoans'] as List?) ?? const [];
-    if (loans.isEmpty) return const SizedBox.shrink();
-    return SectionCard(
-      title: "Today's Loans Issued (${d['todayDisbursedCount'] ?? loans.length})",
-      actions: [TextButton(onPressed: () => context.go('/loans'), child: const Text('View all'))],
-      child: Column(
-        children: loans.map((l) {
-          final m = Map<String, dynamic>.from(l as Map);
-          final c = Map<String, dynamic>.from(m['customer'] ?? {});
-          return ListTile(
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-            leading: const Icon(Icons.payments_outlined, color: AppColors.primary),
-            title: Text('${c['firstName'] ?? ''} ${c['lastName'] ?? ''}'.trim()),
-            subtitle: Text('${m['loanNumber'] ?? ''} · ${m['loanType'] ?? ''}', style: const TextStyle(fontSize: 11)),
-            trailing: Text(formatCurrency(m['principalAmount']), style: const TextStyle(fontWeight: FontWeight.w700)),
-            onTap: () => context.push('/loans/${m['id']}'),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
   Widget _pendingVerificationList(Map<String, dynamic> d) {
     final list = (d['pendingCollections'] as List?) ?? const [];
     if (list.isEmpty) return const SizedBox.shrink();
@@ -476,6 +401,48 @@ class DashboardPage extends ConsumerWidget {
             ),
           );
         }).toList(),
+      ),
+    );
+  }
+
+  Widget _overdueLoansList(BuildContext context, Map<String, dynamic> d) {
+    final list = ((d['overdueLoans'] as List?) ?? const []).take(10).toList();
+    if (list.isEmpty) return const SizedBox.shrink();
+    return SectionCard(
+      title: 'Overdue Loans (${(d['overdueLoans'] as List).length})',
+      actions: [TextButton(onPressed: () => context.push('/loans/overdue'), child: const Text('View all'))],
+      child: Column(
+        children: [
+          ...list.map((l) {
+            final m = Map<String, dynamic>.from(l as Map);
+            final cust = Map<String, dynamic>.from(m['customer'] ?? {});
+            final count = toNum(m['overdueCount']).toInt();
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              onTap: () => context.push('/loans/${m['id']}'),
+              leading: const Icon(Icons.warning_amber, color: AppColors.danger),
+              title: Text('${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}'.trim()),
+              subtitle: Text('${m['loanNumber'] ?? ''} · ${m['loanType'] ?? ''} · $count EMI${count == 1 ? '' : 's'} overdue', style: const TextStyle(fontSize: 11)),
+              trailing: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(formatCurrency(m['overdueAmount']), style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.danger)),
+                  Text('Since ${formatDate(m['oldestDueDate'])}', style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                ],
+              ),
+            );
+          }),
+          const Divider(),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              const Text('Total overdue: ', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+              Text(formatCurrency(d['totalOverdue']), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.danger)),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -541,7 +508,7 @@ class DashboardPage extends ConsumerWidget {
               ],
             ),
           ),
-          if (trailing != null) trailing,
+          ?trailing,
         ],
       ),
     );
@@ -697,7 +664,7 @@ class DashboardPage extends ConsumerWidget {
   Widget _monthlyDisbursementsChart(Map<String, dynamic> d) {
     final items = ((d['monthlyDisbursementTrend'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
     return SectionCard(
-      title: 'Loan Disbursements',
+      title: 'Total Loan Disbursed',
       child: SizedBox(
         height: 200,
         child: items.isEmpty
@@ -800,11 +767,3 @@ class _NotificationsBell extends ConsumerWidget {
   }
 }
 
-class _HeroStat {
-  final String label;
-  final String value;
-  final String? sub;
-  final IconData icon;
-  final LinearGradient gradient;
-  _HeroStat(this.label, this.value, {this.sub, required this.icon, required this.gradient});
-}
