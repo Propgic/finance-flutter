@@ -368,9 +368,13 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
     final loan = _selectedLoan!;
     final c = Map<String, dynamic>.from(loan['customer'] ?? {});
     final assignee = Map<String, dynamic>.from(loan['assignedTo'] ?? {});
-    final totalPaid = _emis.fold<num>(0, (s, e) => s + toNum(e['paidAmount']));
     final totalPayable = toNum(loan['totalPayable']);
-    final balance = totalPayable - totalPaid;
+    // Use the API's authoritative paid/balance (from VERIFIED collections), consistent with
+    // the loan detail and receipt. Summing EMI paidAmount client-side diverges.
+    final totalPaid = loan['totalPaid'] != null
+        ? toNum(loan['totalPaid'])
+        : _emis.fold<num>(0, (s, e) => s + toNum(e['paidAmount']));
+    final balance = loan['balance'] != null ? toNum(loan['balance']) : totalPayable - totalPaid;
     final overdue = _emis
         .where((e) => e['status'] == 'OVERDUE')
         .fold<num>(0, (s, e) => s + toNum(e['emiAmount']) + toNum(e['lateFee']) - toNum(e['paidAmount']));
