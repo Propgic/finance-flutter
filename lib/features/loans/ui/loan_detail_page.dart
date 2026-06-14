@@ -96,6 +96,41 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
   Widget _infoTab(Map<String, dynamic> l) {
     final c = Map<String, dynamic>.from(l['customer'] ?? {});
     final assignee = Map<String, dynamic>.from(l['assignedTo'] ?? {});
+
+    // Payment overview: group Overdue, Due Amount and Total Payable together so the
+    // total amount payable is never confused with the currently due / overdue amounts.
+    final nextEmi = Map<String, dynamic>.from(l['nextEMI'] ?? {});
+    final dueAmount = nextEmi.isEmpty
+        ? 0
+        : toNum(nextEmi['emiAmount']) + toNum(nextEmi['lateFee']) - toNum(nextEmi['paidAmount']);
+    final overdueEmis = toNum(l['overdueEMIs']);
+    final showOverdue = overdueEmis > 0;
+    final showDue = l['status'] == 'ACTIVE' && dueAmount > 0;
+
+    final overviewCards = <Widget>[];
+    if (showOverdue) {
+      overviewCards.add(_amountCard(
+        label: 'Overdue',
+        value: formatCurrency(l['overdueAmount']),
+        color: AppColors.danger,
+        subtitle: '${overdueEmis.toInt()} installment${overdueEmis > 1 ? 's' : ''} overdue',
+      ));
+    }
+    if (showDue) {
+      overviewCards.add(_amountCard(
+        label: 'Due Amount',
+        value: formatCurrency(dueAmount),
+        color: AppColors.warning,
+        subtitle: nextEmi.isEmpty ? null : 'EMI #${nextEmi['emiNumber']} · ${formatDate(nextEmi['dueDate'])}',
+      ));
+    }
+    overviewCards.add(_amountCard(
+      label: 'Total Payable',
+      value: formatCurrency(l['totalPayable']),
+      color: AppColors.primary,
+      subtitle: 'Full amount over term',
+    ));
+
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
@@ -113,6 +148,20 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
                 ),
                 const SizedBox(height: 4),
                 Text(l['loanType']?.toString() ?? '', style: const TextStyle(color: AppColors.textSecondary)),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < overviewCards.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 10),
+                  Expanded(child: overviewCards[i]),
+                ],
               ],
             ),
           ),
@@ -169,9 +218,8 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
           title: 'Payment Status',
           child: Column(
             children: [
-              KeyValueRow(label: 'Paid', value: formatCurrency(l['totalPaid'])),
-              KeyValueRow(label: 'Outstanding', value: formatCurrency(l['outstandingAmount'])),
-              KeyValueRow(label: 'Overdue', value: formatCurrency(l['overdueAmount'])),
+              KeyValueRow(label: 'Paid', value: formatCurrency(l['totalPaid']), valueColor: AppColors.accent),
+              KeyValueRow(label: 'Outstanding', value: formatCurrency(l['outstanding']), valueColor: AppColors.danger),
             ],
           ),
         ),
@@ -183,6 +231,38 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
         if (l['notes'] != null && l['notes'].toString().isNotEmpty)
           SectionCard(title: 'Notes', child: Text(l['notes'].toString())),
       ],
+    );
+  }
+
+  Widget _amountCard({required String label, required String value, required Color color, String? subtitle}) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value, style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w700)),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 3),
+            Text(
+              subtitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: color.withValues(alpha: 0.85), fontSize: 10),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
