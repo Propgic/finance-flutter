@@ -97,8 +97,8 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
     final c = Map<String, dynamic>.from(l['customer'] ?? {});
     final assignee = Map<String, dynamic>.from(l['assignedTo'] ?? {});
 
-    // Payment overview: group Overdue, Due Amount and Total Payable together so the
-    // total amount payable is never confused with the currently due / overdue amounts.
+    // Payment overview: group Overdue, Due Amount and Total Due Payable together so the
+    // amount the customer must pay now is never confused with individual figures.
     final nextEmi = Map<String, dynamic>.from(l['nextEMI'] ?? {});
     final dueAmount = nextEmi.isEmpty
         ? 0
@@ -106,6 +106,8 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
     final overdueEmis = toNum(l['overdueEMIs']);
     final showOverdue = overdueEmis > 0;
     final showDue = l['status'] == 'ACTIVE' && dueAmount > 0;
+    // Total Due Payable = currently due EMI + overdue amount (what's payable right now).
+    final totalDuePayable = (showDue ? dueAmount : 0) + toNum(l['overdueAmount']);
 
     final overviewCards = <Widget>[];
     if (showOverdue) {
@@ -125,10 +127,10 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
       ));
     }
     overviewCards.add(_amountCard(
-      label: 'Total Payable',
-      value: formatCurrency(l['totalPayable']),
+      label: 'Total Due Payable',
+      value: formatCurrency(totalDuePayable),
       color: AppColors.primary,
-      subtitle: 'Full amount over term',
+      subtitle: 'Currently due + overdue',
     ));
 
     return ListView(
