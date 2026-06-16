@@ -16,6 +16,20 @@ class CollectionRepo {
     return Map<String, dynamic>.from(res.data as Map);
   }
 
+  /// Collections for the route map: a single date range with a high limit and
+  /// optional collector filter. Mirrors the web CollectionMap which calls
+  /// `/collections?fromDate&toDate&limit=500[&collectedById]`.
+  Future<List<Map<String, dynamic>>> forMap({required String date, String? collectedById}) async {
+    final q = <String, dynamic>{'fromDate': date, 'toDate': date, 'limit': 500};
+    if (collectedById?.isNotEmpty ?? false) q['collectedById'] = collectedById;
+    final res = await api.raw(() => api.dio.get('/collections', queryParameters: q));
+    final body = res.data;
+    final data = body is Map ? (body['data'] ?? body) : body;
+    final list = data is Map ? data['collections'] : data;
+    if (list is List) return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    return const [];
+  }
+
   Future<Map<String, dynamic>> dailySummary({String? date}) async {
     final q = <String, dynamic>{};
     if (date?.isNotEmpty ?? false) q['date'] = date;

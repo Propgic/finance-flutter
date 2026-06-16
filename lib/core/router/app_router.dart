@@ -53,6 +53,11 @@ import '../../features/reports/ui/investment_report_page.dart';
 import '../../features/reports/ui/customer_report_page.dart';
 import '../../features/settings/ui/settings_page.dart';
 import '../../features/settings/ui/roles_permissions_page.dart';
+import '../../features/collections/ui/collection_map_page.dart';
+import '../../features/customers/ui/consolidated_balance_page.dart';
+import '../../features/chitfunds/ui/chitfund_auction_detail_page.dart';
+import '../../features/expenses/ui/team_salaries_page.dart';
+import '../../features/search/ui/search_page.dart';
 
 class _AuthListenable extends ChangeNotifier {
   _AuthListenable(this.ref) {
@@ -105,6 +110,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/collections/summary', builder: (_, __) => const DailySummaryPage()),
           GoRoute(path: '/collections/verify', builder: (_, __) => const VerifyCollectionsPage()),
           GoRoute(path: '/collections/group', builder: (_, __) => const GroupCollectionPage()),
+          GoRoute(path: '/collections/map', builder: (_, __) => const CollectionMapPage()),
           GoRoute(path: '/collections/:id/receipt', builder: (_, s) => ReceiptPage(id: s.pathParameters['id']!)),
 
           GoRoute(path: '/savings', builder: (_, __) => const SavingsListPage()),
@@ -114,9 +120,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/chitfunds', builder: (_, __) => const ChitfundListPage()),
           GoRoute(path: '/chitfunds/new', builder: (_, __) => const ChitfundFormPage()),
           GoRoute(path: '/chitfunds/:id', builder: (_, s) => ChitfundDetailPage(id: s.pathParameters['id']!)),
+          GoRoute(path: '/chitfunds/:id/auctions/:auctionId', builder: (_, s) => ChitfundAuctionDetailPage(chitfundId: s.pathParameters['id']!, auctionId: s.pathParameters['auctionId']!)),
 
           GoRoute(path: '/expenses', builder: (_, __) => const ExpenseListPage()),
           GoRoute(path: '/expenses/new', builder: (_, __) => const ExpenseFormPage()),
+          GoRoute(path: '/expenses/team-salaries', builder: (_, __) => const TeamSalariesPage()),
           GoRoute(path: '/expenses/:id/edit', builder: (_, state) => ExpenseFormPage(expenseId: state.pathParameters['id'])),
           GoRoute(path: '/reports/expenses', builder: (_, __) => const ExpenseReportPage()),
 
@@ -145,6 +153,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
           GoRoute(path: '/settings', builder: (_, __) => const SettingsPage()),
           GoRoute(path: '/settings/roles', builder: (_, __) => const RolesPermissionsPage()),
+
+          GoRoute(path: '/search', builder: (_, __) => const SearchPage()),
+          GoRoute(path: '/consolidated-balance', builder: (_, __) => const ConsolidatedBalanceSheetPage()),
         ],
       ),
     ],

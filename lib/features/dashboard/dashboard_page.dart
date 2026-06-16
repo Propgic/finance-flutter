@@ -36,6 +36,11 @@ class DashboardPage extends ConsumerWidget {
           builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer()),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Search',
+            icon: const Icon(Icons.search),
+            onPressed: () => context.push('/search'),
+          ),
           _NotificationsBell(),
           IconButton(
             tooltip: 'Profile',

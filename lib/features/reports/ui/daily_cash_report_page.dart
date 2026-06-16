@@ -5,6 +5,7 @@ import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
+import 'report_export.dart';
 
 class DailyCashReportPage extends ConsumerStatefulWidget {
   const DailyCashReportPage({super.key});
@@ -30,10 +31,36 @@ class _DailyCashReportPageState extends ConsumerState<DailyCashReportPage> {
     finally { if (mounted) setState(() => _loading = false); }
   }
 
+  void _exportCsv() {
+    final r = _r!;
+    final cap = Map<String, dynamic>.from(r['capitalSummary'] ?? {});
+    final rows = <List<dynamic>>[
+      ['Date', formatDate(_date)],
+      ['Opening Balance', toNum(r['openingBalance'])],
+      ['Total Inflow', toNum(r['totalInflow'])],
+      ['Total Outflow', toNum(r['totalOutflow'])],
+      ['Net Cash', toNum(r['netCash'])],
+      ['Closing Balance', toNum(r['closingBalance'])],
+      if (cap['investorCapital'] != null) ['Investor Capital', toNum(cap['investorCapital'])],
+      if (cap['savingsDeposits'] != null) ['Savings Deposits', toNum(cap['savingsDeposits'])],
+      if (cap['totalDisbursed'] != null) ['Total Disbursed', toNum(cap['totalDisbursed'])],
+      if (cap['totalCollected'] != null) ['Total Collected', toNum(cap['totalCollected'])],
+    ];
+    exportAndShareCsv(
+      context,
+      filename: 'daily_cash_report',
+      subject: 'Daily Cash Report - ${formatDate(_date)}',
+      headers: const ['Metric', 'Value'],
+      rows: rows,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Daily Cash Report'), actions: [
+        if (_r != null)
+          IconButton(icon: const Icon(Icons.ios_share), tooltip: 'Share / Export CSV', onPressed: _exportCsv),
         TextButton.icon(
           onPressed: () async {
             final d = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime.now(), initialDate: _date);

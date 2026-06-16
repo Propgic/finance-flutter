@@ -4,6 +4,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
+import 'report_export.dart';
 
 class OverdueReportPage extends ConsumerStatefulWidget {
   const OverdueReportPage({super.key});
@@ -41,11 +42,33 @@ class _OverdueReportPageState extends ConsumerState<OverdueReportPage> {
     return (label: 'Low', color: AppColors.info);
   }
 
+  void _exportCsv() {
+    exportAndShareCsv(
+      context,
+      filename: 'overdue_report',
+      subject: 'Overdue Report',
+      headers: const ['Customer', 'Phone', 'Loan Number', 'EMI Number', 'Due Date', 'Days Overdue', 'Severity', 'Total Due'],
+      rows: _data.map((r) => [
+        r['customer'] ?? '',
+        r['phone'] ?? '',
+        r['loanNumber'] ?? '',
+        r['emiNumber'] ?? '',
+        formatDate(r['dueDate']),
+        r['daysOverdue'] ?? '',
+        _severity(r['dueDate']).label,
+        toNum(r['totalDue']),
+      ]).toList(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final total = _data.fold<num>(0, (s, r) => s + toNum(r['totalDue']));
     return Scaffold(
-      appBar: AppBar(title: const Text('Overdue Report'), bottom: PreferredSize(
+      appBar: AppBar(title: const Text('Overdue Report'), actions: [
+        if (_data.isNotEmpty)
+          IconButton(icon: const Icon(Icons.ios_share), tooltip: 'Share / Export CSV', onPressed: _exportCsv),
+      ], bottom: PreferredSize(
         preferredSize: const Size.fromHeight(30),
         child: Padding(
           padding: const EdgeInsets.only(left: 16, bottom: 10, right: 16),

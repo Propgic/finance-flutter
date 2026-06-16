@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 
@@ -63,6 +65,26 @@ class LoanRepo {
     if (d is Map && d['data'] is List) return d['data'];
     return const [];
   }
+
+  /// Uploads one or more loan documents in a single multipart request.
+  /// Backend route: POST /loans/:id/documents (upload.array('documents', 10)).
+  /// The file title defaults to the filename (matches the web's `titles` field).
+  Future<void> uploadDocuments(String id, List<File> files) async {
+    final form = FormData();
+    for (final f in files) {
+      final name = f.path.split(Platform.pathSeparator).last;
+      form.files.add(MapEntry('documents', await MultipartFile.fromFile(f.path, filename: name)));
+      form.fields.add(MapEntry('titles', name.replaceFirst(RegExp(r'\.[^/.]+$'), '')));
+    }
+    await api.post('/loans/$id/documents', data: form);
+  }
+
+  /// Removes the document at [index] (DELETE /loans/:id/documents/:docIndex).
+  Future<void> deleteDocument(String id, int index) async => api.delete('/loans/$id/documents/$index');
+
+  /// Renames the document at [index] (PUT /loans/:id/documents/:docIndex { title }).
+  Future<void> renameDocument(String id, int index, String title) async =>
+      api.put('/loans/$id/documents/$index', data: {'title': title});
 }
 
 final loanRepoProvider = Provider<LoanRepo>((ref) => LoanRepo(ref.read(apiClientProvider)));

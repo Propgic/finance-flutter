@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_controller.dart';
@@ -232,8 +234,125 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
           ),
         if (l['notes'] != null && l['notes'].toString().isNotEmpty)
           SectionCard(title: 'Notes', child: Text(l['notes'].toString())),
+        _documentsSection(l),
       ],
     );
+  }
+
+  bool _isImageDoc(String? url) {
+    final u = (url ?? '').toLowerCase();
+    return u.endsWith('.jpg') || u.endsWith('.jpeg') || u.endsWith('.png') || u.endsWith('.webp') || u.endsWith('.gif');
+  }
+
+  Widget _documentsSection(Map<String, dynamic> l) {
+    final auth = ref.watch(authProvider);
+    final canManage = auth.hasPermission('loans.create') || auth.hasRole('ORG_ADMIN') || auth.hasRole('MANAGER');
+    final docs = (l['documents'] is List) ? List<dynamic>.from(l['documents'] as List) : const <dynamic>[];
+
+    return SectionCard(
+      title: 'Documents',
+      actions: [
+        if (canManage)
+          TextButton.icon(
+            onPressed: _addDocument,
+            icon: const Icon(Icons.upload_file, size: 18),
+            label: const Text('Add'),
+          ),
+      ],
+      child: docs.isEmpty
+          ? const EmptyView(message: 'No documents uploaded', icon: Icons.description_outlined)
+          : Column(
+              children: [
+                for (var i = 0; i < docs.length; i++) _documentTile(Map<String, dynamic>.from(docs[i] as Map), i, canManage),
+              ],
+            ),
+    );
+  }
+
+  Widget _documentTile(Map<String, dynamic> doc, int index, bool canManage) {
+    final url = (doc['url'] ?? doc['path'])?.toString();
+    final title = (doc['title'] ?? doc['name'] ?? 'Document').toString();
+    final isImage = _isImageDoc(url);
+    final uploadedBy = doc['uploadedBy']?.toString();
+    final uploadedAt = doc['uploadedAt'];
+    final subtitleParts = <String>[
+      if (uploadedBy != null && uploadedBy.isNotEmpty) 'By $uploadedBy',
+      if (uploadedAt != null) formatDate(uploadedAt),
+    ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(isImage ? Icons.image_outlined : Icons.insert_drive_file_outlined, color: AppColors.primary),
+        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: subtitleParts.isEmpty ? null : Text(subtitleParts.join(' · '), style: const TextStyle(fontSize: 12)),
+        onTap: () => _openDocument(url, isImage),
+        trailing: canManage
+            ? IconButton(
+                icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+                onPressed: () => _deleteDocument(index, title),
+              )
+            : Icon(isImage ? Icons.open_in_full : Icons.open_in_new, size: 18, color: AppColors.textSecondary),
+      ),
+    );
+  }
+
+  void _openDocument(String? url, bool isImage) {
+    if (url == null || url.isEmpty) return;
+    if (isImage) {
+      showImageViewer(context, url);
+    } else {
+      final full = resolveUrl(url);
+      if (full != null) launchUrl(Uri.parse(full), mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _addDocument() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    final XFile? x;
+    try {
+      x = await ImagePicker().pickImage(source: source, maxWidth: 1600, imageQuality: 80);
+    } catch (_) {
+      showToast('Could not access ${source == ImageSource.camera ? 'camera' : 'gallery'}', error: true);
+      return;
+    }
+    if (x == null) return;
+    await _doAction(
+      () => ref.read(loanRepoProvider).uploadDocuments(widget.id, [File(x!.path)]),
+      'Document uploaded',
+    );
+  }
+
+  Future<void> _deleteDocument(int index, String title) async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Delete Document',
+      message: 'Delete "$title"?',
+      confirmText: 'Delete',
+      destructive: true,
+    );
+    if (!ok) return;
+    await _doAction(() => ref.read(loanRepoProvider).deleteDocument(widget.id, index), 'Document deleted');
   }
 
   Widget _amountCard({required String label, required String value, required Color color, String? subtitle}) {

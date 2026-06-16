@@ -4,6 +4,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
+import 'report_export.dart';
 
 class SavingsReportPage extends ConsumerStatefulWidget {
   const SavingsReportPage({super.key});
@@ -36,11 +37,31 @@ class _SavingsReportPageState extends ConsumerState<SavingsReportPage> {
     finally { if (mounted) setState(() => _loading = false); }
   }
 
+  void _exportCsv() {
+    exportAndShareCsv(
+      context,
+      filename: 'savings_report',
+      subject: 'Savings Report',
+      headers: const ['Customer', 'Account Number', 'Type', 'Interest Rate', 'Status', 'Balance'],
+      rows: _data.map((r) => [
+        r['customer'] ?? '',
+        r['accountNumber'] ?? '',
+        r['type'] ?? '',
+        r['interestRate'] ?? '',
+        r['status'] ?? '',
+        toNum(r['balance']),
+      ]).toList(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final total = _data.fold<num>(0, (s, r) => s + toNum(r['balance']));
     return Scaffold(
-      appBar: AppBar(title: const Text('Savings Report'), bottom: PreferredSize(
+      appBar: AppBar(title: const Text('Savings Report'), actions: [
+        if (_data.isNotEmpty)
+          IconButton(icon: const Icon(Icons.ios_share), tooltip: 'Share / Export CSV', onPressed: _exportCsv),
+      ], bottom: PreferredSize(
         preferredSize: const Size.fromHeight(30),
         child: Padding(padding: const EdgeInsets.only(left: 16, bottom: 10, right: 16), child: Align(alignment: Alignment.centerLeft, child: Text('Total Balance: ${formatCurrency(total)}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)))),
       )),

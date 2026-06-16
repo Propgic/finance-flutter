@@ -88,6 +88,7 @@ class _CollectionListPageState extends ConsumerState<CollectionListPage> {
         title: const Text('Collections'),
         leading: Builder(builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer())),
         actions: [
+          IconButton(icon: const Icon(Icons.map_outlined), tooltip: 'Route Map', onPressed: () => context.push('/collections/map')),
           IconButton(icon: const Icon(Icons.summarize_outlined), tooltip: 'Daily Summary', onPressed: () => context.push('/collections/summary')),
           IconButton(icon: const Icon(Icons.verified_outlined), tooltip: 'Verify', onPressed: () => context.push('/collections/verify')),
         ],

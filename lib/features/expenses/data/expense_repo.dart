@@ -32,6 +32,30 @@ class ExpenseRepo {
     return const [];
   }
 
+  /// Save the full ordered list of expense categories.
+  /// Each entry is an object: `{key, label, color}`. Body shape: `{categories: [...]}`.
+  /// ORG_ADMIN only (enforced by backend). Returns the saved categories.
+  Future<List<dynamic>> updateCategories(List<Map<String, dynamic>> categories) async {
+    final d = await api.put('/expenses/categories', data: {'categories': categories});
+    if (d is List) return d;
+    if (d is Map && d['categories'] is List) return d['categories'];
+    return categories;
+  }
+
+  /// Team salary breakdown. `month` is a label like "April 2026" (web uses
+  /// `{ month }` query param only). Returns a list of member maps with
+  /// `salary`, `salaryMode`, `lastPayment`, `salaryPaidThisMonth`,
+  /// and (for percentage modes) `collectionAmount`/`commissionAmount`/`calculatedSalary`.
+  Future<List<dynamic>> teamSalaries({String? month}) async {
+    final q = <String, dynamic>{};
+    if (month?.isNotEmpty ?? false) q['month'] = month;
+    final res = await api.raw(() => api.dio.get('/expenses/team-salaries', queryParameters: q));
+    final d = res.data;
+    if (d is Map && d['data'] is List) return d['data'] as List;
+    if (d is List) return d;
+    return const [];
+  }
+
   Future<Map<String, dynamic>> get(String id) async {
     final d = await api.get('/expenses/$id');
     return Map<String, dynamic>.from(d as Map);

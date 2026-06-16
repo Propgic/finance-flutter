@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../data/expense_repo.dart';
+import 'manage_categories_dialog.dart';
 import '../../app_shell.dart';
 import '../../../core/widgets/app_bottom_nav.dart';
 
@@ -60,13 +61,36 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isMgr = ref.watch(authProvider).hasRole('ORG_ADMIN') || ref.watch(authProvider).hasRole('MANAGER');
+    final auth = ref.watch(authProvider);
+    final isMgr = auth.hasRole('ORG_ADMIN') || auth.hasRole('MANAGER');
+    final isAdmin = auth.hasRole('ORG_ADMIN');
     return Scaffold(
       drawer: const AppDrawer(),
       bottomNavigationBar: const AppBottomNav(),
       appBar: AppBar(
         title: const Text('Expenses'),
         leading: Builder(builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer())),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.groups_outlined),
+            tooltip: 'Team Salaries',
+            onPressed: () => context.push('/expenses/team-salaries'),
+          ),
+          if (isAdmin)
+            PopupMenuButton<String>(
+              onSelected: (v) async {
+                if (v == 'categories') {
+                  await showManageCategoriesDialog(context);
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'categories',
+                  child: ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.category_outlined), title: Text('Manage Categories')),
+                ),
+              ],
+            ),
+        ],
       ),
       floatingActionButton: isMgr
           ? FloatingActionButton.extended(onPressed: () => context.push('/expenses/new'), icon: const Icon(Icons.add), label: const Text('New'))

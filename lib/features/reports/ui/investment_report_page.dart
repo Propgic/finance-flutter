@@ -4,6 +4,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
+import 'report_export.dart';
 
 class InvestmentReportPage extends ConsumerStatefulWidget {
   const InvestmentReportPage({super.key});
@@ -37,10 +38,35 @@ class _InvestmentReportPageState extends ConsumerState<InvestmentReportPage> {
     finally { if (mounted) setState(() => _loading = false); }
   }
 
+  void _exportCsv() {
+    exportAndShareCsv(
+      context,
+      filename: 'investment_report',
+      subject: 'Investment Report',
+      headers: const ['Investment Number', 'Investor', 'Phone', 'Status', 'Principal', 'Interest Rate', 'Interest Type', 'Tenure (m)', 'Expected Interest', 'Maturity Amount', 'Maturity Date'],
+      rows: _data.map((inv) => [
+        inv['investmentNumber'] ?? '',
+        inv['investor'] ?? '',
+        inv['phone'] ?? '',
+        inv['status'] ?? '',
+        toNum(inv['principal']),
+        inv['interestRate'] ?? '',
+        inv['interestType'] ?? '',
+        inv['tenure'] ?? '',
+        toNum(inv['expectedInterest']),
+        toNum(inv['maturityAmount']),
+        formatDate(inv['maturityDate']),
+      ]).toList(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Investment Report')),
+      appBar: AppBar(title: const Text('Investment Report'), actions: [
+        if (_data.isNotEmpty)
+          IconButton(icon: const Icon(Icons.ios_share), tooltip: 'Share / Export CSV', onPressed: _exportCsv),
+      ]),
       body: Column(children: [
         Container(color: Colors.white, padding: const EdgeInsets.all(10), child: SizedBox(
           width: double.infinity,

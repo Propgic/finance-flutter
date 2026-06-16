@@ -6,6 +6,7 @@ import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
+import 'report_export.dart';
 
 const _loanTypeFeatureMap = {
   'PERSONAL':'enablePersonalLoan','GOLD':'enableGoldLoan','GROUP':'enableGroupLoan',
@@ -69,6 +70,25 @@ class _LoanReportPageState extends ConsumerState<LoanReportPage> {
     finally { if (mounted) setState(() => _loading = false); }
   }
 
+  void _exportCsv() {
+    exportAndShareCsv(
+      context,
+      filename: 'loan_report',
+      subject: 'Loan Report',
+      headers: const ['Loan Number', 'Customer', 'Type', 'Status', 'Principal', 'Disbursed', 'Interest', 'Outstanding'],
+      rows: _data.map((r) => [
+        r['loanNumber'] ?? '',
+        r['customer'] ?? '',
+        _loanTypeLabels[r['type']] ?? r['type'] ?? '',
+        r['status'] ?? '',
+        toNum(r['principal']),
+        toNum(r['disbursed']),
+        toNum(r['interest']),
+        toNum(r['outstanding']),
+      ]).toList(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final features = ref.watch(authProvider).org?.features ?? const {};
@@ -81,6 +101,8 @@ class _LoanReportPageState extends ConsumerState<LoanReportPage> {
       appBar: AppBar(
         title: const Text('Loan Report'),
         actions: [
+          if (_data.isNotEmpty)
+            IconButton(icon: const Icon(Icons.ios_share), tooltip: 'Share / Export CSV', onPressed: _exportCsv),
           TextButton(onPressed: _resetFilters, child: const Text('Reset', style: TextStyle(fontSize: 12))),
         ],
       ),

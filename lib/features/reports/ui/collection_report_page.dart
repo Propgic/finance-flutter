@@ -4,6 +4,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
+import 'report_export.dart';
 
 class CollectionReportPage extends ConsumerStatefulWidget {
   const CollectionReportPage({super.key});
@@ -36,11 +37,31 @@ class _CollectionReportPageState extends ConsumerState<CollectionReportPage> {
     finally { if (mounted) setState(() => _loading = false); }
   }
 
+  void _exportCsv() {
+    exportAndShareCsv(
+      context,
+      filename: 'collection_report',
+      subject: 'Collection Report',
+      headers: const ['Receipt', 'Customer', 'Loan Number', 'Payment Mode', 'Amount', 'Verification'],
+      rows: _data.map((r) => [
+        r['receiptNumber'] ?? '',
+        r['customerName'] ?? '',
+        r['loanNumber'] ?? '',
+        r['paymentMode'] ?? '',
+        toNum(r['amount']),
+        r['verificationStatus'] ?? '',
+      ]).toList(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final total = _data.fold<num>(0, (s, r) => s + toNum(r['amount']));
     return Scaffold(
-      appBar: AppBar(title: const Text('Collection Report')),
+      appBar: AppBar(title: const Text('Collection Report'), actions: [
+        if (_data.isNotEmpty)
+          IconButton(icon: const Icon(Icons.ios_share), tooltip: 'Share / Export CSV', onPressed: _exportCsv),
+      ]),
       body: Column(
         children: [
           Container(

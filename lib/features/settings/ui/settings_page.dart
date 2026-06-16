@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../../app_shell.dart';
 import '../../../core/widgets/app_bottom_nav.dart';
@@ -24,15 +25,49 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   final _phone = TextEditingController();
   final _receiptPrefix = TextEditingController();
   final _loanPrefix = TextEditingController();
+  final _customerPrefix = TextEditingController();
+  final _savingsPrefix = TextEditingController();
   final _defaultRate = TextEditingController();
   final _defaultLateFee = TextEditingController();
+  final _processingFee = TextEditingController();
+  final _gracePeriodDays = TextEditingController();
   bool _hydrated = false;
   Map<String, dynamic>? _settings;
   Map<String, dynamic>? _features;
+  Map<String, dynamic>? _subscription;
   Object? _error;
   bool _loading = true;
   bool _saving = false;
   File? _logoFile;
+
+  // Loan customer filter (web: ALL | NEW_OR_CLOSED). Backend accepts `loanCustomerFilter`.
+  static const _customerFilters = <List<String>>[
+    ['ALL', 'Show all customers'],
+    ['NEW_OR_CLOSED', 'Only new or loan-closed customers'],
+  ];
+  String _loanCustomerFilter = 'ALL';
+
+  // Collection defaults (web sends flat `defaultCollectionDays` (List<int>) + `defaultWeeklyDay` (int)).
+  // Day values: 0=Sun .. 6=Sat (matches web).
+  static const _weekDays = <List<dynamic>>[
+    [1, 'Mon'],
+    [2, 'Tue'],
+    [3, 'Wed'],
+    [4, 'Thu'],
+    [5, 'Fri'],
+    [6, 'Sat'],
+    [0, 'Sun'],
+  ];
+  Set<int> _collectionDays = {1, 2, 3, 4, 5, 6};
+  int _weeklyDay = 1;
+
+  // Notification preferences (web sends nested `notifications: {...}`).
+  final Map<String, bool> _notifications = {
+    'emailOnCollection': true,
+    'emailOnLoanApproval': true,
+    'smsOnEmiReminder': false,
+    'smsOnOverdue': false,
+  };
 
   static const _loanTypes = <List<String>>[
     ['PERSONAL', 'Personal'],
@@ -63,9 +98,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       final results = await Future.wait([
         api.get('/settings'),
         api.get('/settings/features'),
+        // Subscription is read-only; tolerate failure (non-admin roles may be forbidden).
+        api.get('/settings/subscription').then<dynamic>((v) => v).catchError((_) => null),
       ]);
       final s = Map<String, dynamic>.from(results[0] as Map);
       final f = Map<String, dynamic>.from(results[1] as Map);
+      final sub = results[2] is Map ? Map<String, dynamic>.from(results[2] as Map) : null;
       if (!_hydrated) {
         _companyName.text = s['companyName']?.toString() ?? '';
         _tagline.text = s['tagline']?.toString() ?? '';
@@ -73,8 +111,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         _phone.text = s['phone']?.toString() ?? '';
         _receiptPrefix.text = s['receiptPrefix']?.toString() ?? '';
         _loanPrefix.text = s['loanNumberPrefix']?.toString() ?? '';
+        _customerPrefix.text = s['customerPrefix']?.toString() ?? '';
+        _savingsPrefix.text = s['savingsPrefix']?.toString() ?? '';
         _defaultRate.text = s['defaultInterestRate']?.toString() ?? '';
         _defaultLateFee.text = s['defaultLateFee']?.toString() ?? '';
+        _processingFee.text = s['defaultProcessingFee']?.toString() ?? '';
+        _gracePeriodDays.text = s['gracePeriodDays']?.toString() ?? '';
+        final filter = s['loanCustomerFilter']?.toString();
+        _loanCustomerFilter = _customerFilters.any((c) => c[0] == filter) ? filter! : 'ALL';
+        final days = s['defaultCollectionDays'];
+        if (days is List) {
+          _collectionDays = days.map((e) => (e as num).toInt()).toSet();
+        }
+        final wd = s['defaultWeeklyDay'];
+        if (wd is num) _weeklyDay = wd.toInt();
+        final notifs = (s['notifications'] as Map?) ?? const {};
+        for (final key in _notifications.keys.toList()) {
+          if (notifs[key] is bool) _notifications[key] = notifs[key] as bool;
+        }
         final policy = (s['suretyPolicy'] as Map?) ?? const {};
         _suretyDefault = _policyValues.contains(policy['default']) ? policy['default'] as String : 'OPTIONAL';
         _suretyByType.clear();
@@ -84,7 +138,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         });
         _hydrated = true;
       }
-      if (mounted) setState(() { _settings = s; _features = f; _loading = false; });
+      if (mounted) setState(() { _settings = s; _features = f; _subscription = sub; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _error = e; _loading = false; });
     }
@@ -104,10 +158,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         'tagline': _tagline.text.trim(),
         'address': _address.text.trim(),
         'phone': _phone.text.trim(),
+        // Numbering (match web keys exactly)
         'receiptPrefix': _receiptPrefix.text.trim(),
         'loanNumberPrefix': _loanPrefix.text.trim(),
+        'customerPrefix': _customerPrefix.text.trim(),
+        'savingsPrefix': _savingsPrefix.text.trim(),
+        // Defaults
         if (_defaultRate.text.trim().isNotEmpty) 'defaultInterestRate': double.tryParse(_defaultRate.text.trim()),
         if (_defaultLateFee.text.trim().isNotEmpty) 'defaultLateFee': double.tryParse(_defaultLateFee.text.trim()),
+        if (_processingFee.text.trim().isNotEmpty) 'defaultProcessingFee': double.tryParse(_processingFee.text.trim()),
+        if (_gracePeriodDays.text.trim().isNotEmpty) 'gracePeriodDays': int.tryParse(_gracePeriodDays.text.trim()),
+        // Loan customer filter
+        'loanCustomerFilter': _loanCustomerFilter,
+        // Collection defaults (flat keys, like web)
+        'defaultCollectionDays': (_collectionDays.toList()..sort()),
+        'defaultWeeklyDay': _weeklyDay,
+        // Notification preferences (nested, like web)
+        'notifications': Map<String, bool>.from(_notifications),
         'suretyPolicy': {
           'default': _suretyDefault,
           'byLoanType': Map<String, String>.from(_suretyByType),
@@ -213,16 +280,147 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
         ),
         SectionCard(
-          title: 'Defaults',
+          title: 'Numbering',
           child: Column(
             children: [
-              TextField(controller: _receiptPrefix, decoration: const InputDecoration(labelText: 'Receipt Prefix')),
-              const SizedBox(height: 10),
               TextField(controller: _loanPrefix, decoration: const InputDecoration(labelText: 'Loan Number Prefix')),
               const SizedBox(height: 10),
+              TextField(controller: _customerPrefix, decoration: const InputDecoration(labelText: 'Customer Prefix')),
+              const SizedBox(height: 10),
+              TextField(controller: _receiptPrefix, decoration: const InputDecoration(labelText: 'Receipt Prefix')),
+              const SizedBox(height: 10),
+              TextField(controller: _savingsPrefix, decoration: const InputDecoration(labelText: 'Savings Prefix')),
+            ],
+          ),
+        ),
+        SectionCard(
+          title: 'Default Loan Settings',
+          child: Column(
+            children: [
               TextField(controller: _defaultRate, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Default Interest Rate (%)')),
               const SizedBox(height: 10),
               TextField(controller: _defaultLateFee, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Default Late Fee')),
+              const SizedBox(height: 10),
+              TextField(controller: _processingFee, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Processing Fee (%)')),
+              const SizedBox(height: 10),
+              TextField(controller: _gracePeriodDays, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Grace Period (days)')),
+              const SizedBox(height: 14),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Customer List Filter', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              ),
+              const SizedBox(height: 4),
+              ..._customerFilters.map((cf) {
+                final selected = _loanCustomerFilter == cf[0];
+                return InkWell(
+                  onTap: () => setState(() => _loanCustomerFilter = cf[0]),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        Icon(
+                          selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                          color: selected ? AppColors.primary : AppColors.textSecondary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(cf[1])),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+        SectionCard(
+          title: 'Collection Defaults',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Default days when collections are scheduled for daily and weekly loans.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              const Text('Daily Loan Collection Days', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _weekDays.map((d) {
+                  final val = d[0] as int;
+                  final selected = _collectionDays.contains(val);
+                  return FilterChip(
+                    label: Text(d[1] as String),
+                    selected: selected,
+                    onSelected: (sel) => setState(() {
+                      if (sel) {
+                        _collectionDays.add(val);
+                      } else {
+                        _collectionDays.remove(val);
+                      }
+                    }),
+                  );
+                }).toList(),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '${_collectionDays.length} days/week selected',
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text('Weekly Loan Collection Day', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _weekDays.map((d) {
+                  final val = d[0] as int;
+                  return ChoiceChip(
+                    label: Text(d[1] as String),
+                    selected: _weeklyDay == val,
+                    onSelected: (_) => setState(() => _weeklyDay = val),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+        SectionCard(
+          title: 'Notification Preferences',
+          child: Column(
+            children: [
+              SwitchListTile(
+                title: const Text('Email on Collection'),
+                subtitle: const Text('Send email when payment is collected'),
+                contentPadding: EdgeInsets.zero,
+                value: _notifications['emailOnCollection'] ?? false,
+                onChanged: (v) => setState(() => _notifications['emailOnCollection'] = v),
+              ),
+              SwitchListTile(
+                title: const Text('Email on Loan Approval'),
+                subtitle: const Text('Send email when loan is approved'),
+                contentPadding: EdgeInsets.zero,
+                value: _notifications['emailOnLoanApproval'] ?? false,
+                onChanged: (v) => setState(() => _notifications['emailOnLoanApproval'] = v),
+              ),
+              SwitchListTile(
+                title: const Text('SMS EMI Reminder'),
+                subtitle: const Text('Send SMS reminder before EMI due date'),
+                contentPadding: EdgeInsets.zero,
+                value: _notifications['smsOnEmiReminder'] ?? false,
+                onChanged: (v) => setState(() => _notifications['smsOnEmiReminder'] = v),
+              ),
+              SwitchListTile(
+                title: const Text('SMS on Overdue'),
+                subtitle: const Text('Send SMS when EMI becomes overdue'),
+                contentPadding: EdgeInsets.zero,
+                value: _notifications['smsOnOverdue'] ?? false,
+                onChanged: (v) => setState(() => _notifications['smsOnOverdue'] = v),
+              ),
             ],
           ),
         ),
@@ -290,7 +488,44 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ],
           ),
         ),
+        if (_subscription != null) _buildSubscription(_subscription!),
       ],
+    );
+  }
+
+  Widget _buildSubscription(Map<String, dynamic> sub) {
+    final status = sub['subscriptionStatus']?.toString() ?? 'UNKNOWN';
+    final counts = (sub['_count'] as Map?) ?? const {};
+    return SectionCard(
+      title: 'Subscription',
+      actions: [StatusChip(label: status, color: statusColor(status == 'TRIAL' ? 'PENDING' : status))],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          KeyValueRow(label: 'Organization', value: sub['name']?.toString() ?? '-'),
+          KeyValueRow(label: 'Plan / Slug', value: sub['slug']?.toString() ?? '-'),
+          KeyValueRow(label: 'Status', value: titleCase(status)),
+          KeyValueRow(label: 'Billing Amount', value: formatCurrency(sub['subscriptionAmount'])),
+          KeyValueRow(label: 'Billing Cycle', value: titleCase(sub['billingCycle']?.toString() ?? '-')),
+          KeyValueRow(label: 'Renewal Date', value: formatDate(sub['renewalDate'])),
+          KeyValueRow(label: 'Member Since', value: formatDate(sub['createdAt'])),
+          const Divider(height: 24),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Usage', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          ),
+          const SizedBox(height: 6),
+          KeyValueRow(label: 'Team Members', value: '${counts['users'] ?? 0}'),
+          KeyValueRow(label: 'Customers', value: '${counts['customers'] ?? 0}'),
+          KeyValueRow(label: 'Loans', value: '${counts['loans'] ?? 0}'),
+          KeyValueRow(label: 'Savings Accounts', value: '${counts['savings'] ?? 0}'),
+          const SizedBox(height: 8),
+          const Text(
+            'To upgrade or modify your subscription, please contact the administrator.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+        ],
+      ),
     );
   }
 

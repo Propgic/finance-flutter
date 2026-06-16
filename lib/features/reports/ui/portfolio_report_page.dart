@@ -5,6 +5,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
+import 'report_export.dart';
 
 class PortfolioReportPage extends ConsumerStatefulWidget {
   const PortfolioReportPage({super.key});
@@ -31,10 +32,40 @@ class _PortfolioReportPageState extends ConsumerState<PortfolioReportPage> {
     finally { if (mounted) setState(() => _loading = false); }
   }
 
+  void _exportCsv() {
+    final r = _r!;
+    final byType = ((r['byType'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final rows = <List<dynamic>>[
+      ['Total AUM', toNum(r['aum'])],
+      ['Active Loans', r['activeLoans'] ?? 0],
+      ['NPA', toNum(r['npa'])],
+      ['Health Score', '${r['healthScore'] ?? 0}%'],
+      ['Current (0-30d)', toNum(r['current'])],
+      ['Current %', toNum(r['currentPct'])],
+      ['Sub-Standard (31-90d)', toNum(r['subStandard'])],
+      ['Sub-Standard %', toNum(r['subStandardPct'])],
+      ['Doubtful (91-180d)', toNum(r['doubtful'])],
+      ['Doubtful %', toNum(r['doubtfulPct'])],
+      ['Loss (180+d)', toNum(r['loss'])],
+      ['Loss %', toNum(r['lossPct'])],
+      for (final t in byType) ['By Type: ${t['type'] ?? t['name'] ?? ''}', toNum(t['amount'])],
+    ];
+    exportAndShareCsv(
+      context,
+      filename: 'portfolio_report',
+      subject: 'Portfolio Report',
+      headers: const ['Metric', 'Value'],
+      rows: rows,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Portfolio Report')),
+      appBar: AppBar(title: const Text('Portfolio Report'), actions: [
+        if (_r != null)
+          IconButton(icon: const Icon(Icons.ios_share), tooltip: 'Share / Export CSV', onPressed: _exportCsv),
+      ]),
       body: _loading ? const LoadingView()
         : _error != null ? ErrorView(message: _error.toString(), onRetry: _fetch)
         : _buildBody(_r ?? const {}),

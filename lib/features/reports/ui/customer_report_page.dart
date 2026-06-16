@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../../customers/data/customer_repo.dart';
+import 'report_export.dart';
 
 class CustomerReportPage extends ConsumerStatefulWidget {
   final String? customerId;
@@ -57,6 +58,8 @@ class _CustomerReportPageState extends ConsumerState<CustomerReportPage> {
       appBar: AppBar(
         title: const Text('Customer Report'),
         actions: [
+          if (_customer != null && _report != null)
+            IconButton(icon: const Icon(Icons.ios_share), tooltip: 'Share / Export CSV', onPressed: _exportCsv),
           if (_customer != null)
             TextButton(onPressed: () { setState(() { _customer = null; _report = null; }); }, child: const Text('Change')),
           IconButton(icon: const Icon(Icons.search), onPressed: _pick),
@@ -81,6 +84,30 @@ class _CustomerReportPageState extends ConsumerState<CustomerReportPage> {
       ]),
     ),
   );
+
+  void _exportCsv() {
+    final c = _customer!;
+    final r = _report!;
+    final loans = (r['loans'] as List?) ?? const [];
+    final savings = (r['savings'] as List?) ?? const [];
+    final name = '${c['firstName'] ?? ''} ${c['lastName'] ?? ''}'.trim();
+    final rows = <List<dynamic>>[];
+    for (final l in loans) {
+      final m = Map<String, dynamic>.from(l as Map);
+      rows.add(['Loan', m['loanNumber'] ?? '', m['loanType'] ?? '', toNum(m['principalAmount']), m['status'] ?? '']);
+    }
+    for (final s in savings) {
+      final m = Map<String, dynamic>.from(s as Map);
+      rows.add(['Savings', m['accountNumber'] ?? '', m['accountType'] ?? '', toNum(m['balance']), '']);
+    }
+    exportAndShareCsv(
+      context,
+      filename: 'customer_report',
+      subject: 'Customer Report - $name',
+      headers: const ['Section', 'Reference', 'Type', 'Amount', 'Status'],
+      rows: rows,
+    );
+  }
 
   Widget _buildReport() {
     final c = _customer!;

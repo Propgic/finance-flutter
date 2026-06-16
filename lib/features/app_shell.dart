@@ -26,6 +26,7 @@ const _navItems = <NavItem>[
   NavItem('Investors', Icons.trending_up, '/investors', featureFlag: 'enableInvestments', permission: 'investors.view'),
   NavItem('Expenses', Icons.receipt_long_outlined, '/expenses', featureFlag: 'enableExpenses', permission: 'expenses.view'),
   NavItem('Reports', Icons.bar_chart_outlined, '/reports', featureFlag: 'enableReports', permission: 'reports.view'),
+  NavItem('Balance Sheet', Icons.account_balance_outlined, '/consolidated-balance', featureFlag: 'enableConsolidatedBalance', permission: 'reports.view'),
   NavItem('Team', Icons.group_outlined, '/team', permission: 'team.view'),
   NavItem('Settings', Icons.settings_outlined, '/settings', role: 'ORG_ADMIN'),
 ];

@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 
@@ -59,6 +61,58 @@ class CustomerRepo {
     if (body is Map && body['data'] is List) return body['data'];
     if (body is List) return body;
     return const [];
+  }
+
+  /// Sets/resets the customer portal login password.
+  /// Backend: POST /customers/:id/set-password { password } (min 6 chars).
+  Future<void> setPassword(String id, String password) async =>
+      api.post('/customers/$id/set-password', data: {'password': password});
+
+  /// Updates the interest-free opening balance.
+  /// Backend: PATCH /customers/:id/opening-balance { openingBalance }.
+  Future<Map<String, dynamic>> updateOpeningBalance(String id, num amount) async {
+    final d = await api.patch('/customers/$id/opening-balance', data: {'openingBalance': amount});
+    return Map<String, dynamic>.from(d as Map);
+  }
+
+  /// Uploads one or more documents in a single multipart request.
+  /// Backend: POST /customers/:id/documents (upload.array('documents', 5)).
+  /// Documents are stored as { name, path }.
+  Future<void> uploadDocuments(String id, List<File> files) async {
+    final form = FormData();
+    for (final f in files) {
+      final name = f.path.split(Platform.pathSeparator).last;
+      form.files.add(MapEntry('documents', await MultipartFile.fromFile(f.path, filename: name)));
+    }
+    await api.post('/customers/$id/documents', data: form);
+  }
+
+  /// Removes the document at [index].
+  /// Backend: DELETE /customers/:id/documents/:docIndex.
+  Future<void> deleteDocument(String id, int index) async =>
+      api.delete('/customers/$id/documents/$index');
+
+  /// Bulk-settles all active loans for the customer.
+  /// Backend: POST /customers/:id/consolidated-settle { settlementAmount, notes }.
+  Future<Map<String, dynamic>> consolidatedSettle(String id, Map<String, dynamic> body) async {
+    final d = await api.post('/customers/$id/consolidated-settle', data: body);
+    return Map<String, dynamic>.from(d as Map);
+  }
+
+  /// Fetches the per-customer consolidated balance sheet.
+  /// Backend: GET /customers/:id/consolidated-balance.
+  /// Returns { customer, loansByType, summary, generatedAt }.
+  Future<Map<String, dynamic>> consolidatedBalance(String id) async {
+    final d = await api.get('/customers/$id/consolidated-balance');
+    return Map<String, dynamic>.from(d as Map);
+  }
+
+  /// Fetches the org-wide consolidated balances (paginated, with summary).
+  /// Backend: GET /customers/consolidated-balances.
+  /// Returns the raw body: { data, pagination, summary }.
+  Future<Map<String, dynamic>> consolidatedBalances({Map<String, dynamic>? params}) async {
+    final res = await api.raw(() => api.dio.get('/customers/consolidated-balances', queryParameters: params));
+    return Map<String, dynamic>.from(res.data as Map);
   }
 }
 
