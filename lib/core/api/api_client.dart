@@ -83,7 +83,8 @@ final dioProvider = Provider<Dio>((ref) {
     baseUrl: baseUrl,
     connectTimeout: const Duration(seconds: 20),
     receiveTimeout: const Duration(seconds: 30),
-    headers: {'Content-Type': 'application/json'},
+    // Identify this client so the backend can enforce per-member platform access.
+    headers: {'Content-Type': 'application/json', 'X-Client-Platform': 'mobile'},
     validateStatus: (s) => s != null && s < 500,
   ));
 
