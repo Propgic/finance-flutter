@@ -95,6 +95,50 @@ class LoanRepo {
   /// Renames the document at [index] (PUT /loans/:id/documents/:docIndex { title }).
   Future<void> renameDocument(String id, int index, String title) async =>
       api.put('/loans/$id/documents/$index', data: {'title': title});
+
+  /// Lightweight feed for the Assign Loan screen: every active loan with its
+  /// outstanding balance and current field officer ({ id, name } | null).
+  Future<List<dynamic>> assignable() async {
+    final d = await api.get('/loans/assignable');
+    if (d is List) return d;
+    if (d is Map && d['data'] is List) return d['data'];
+    return const [];
+  }
+
+  /// Saves an employee's loan "basket": [loanIds] become their exact set of active
+  /// loans — unassigned loans are picked up, and any of their loans not in the list
+  /// are released. Only UNASSIGNED loans can be picked up (the server rejects stealing
+  /// a loan that another agent still holds). Returns the server's summary message.
+  Future<String> assignBasket(String employeeId, List<String> loanIds) async {
+    final res = await api.raw(() => api.dio.post('/loans/assign',
+        data: {'employeeId': employeeId, 'loanIds': loanIds}));
+    final body = res.data;
+    if (body is Map && body['success'] == false) {
+      throw ApiException(body['message']?.toString() ?? 'Failed to assign',
+          statusCode: res.statusCode, data: body);
+    }
+    return (body is Map ? body['message']?.toString() : null) ?? 'Assignment saved';
+  }
+
+  /// Hands over an officer's entire live workload to another officer (e.g. when they
+  /// resign), optionally moving their assigned customers too. Returns the summary.
+  Future<String> reassignFrom({
+    required String toUserId,
+    required String fromUserId,
+    bool includeCustomers = true,
+  }) async {
+    final res = await api.raw(() => api.dio.post('/loans/reassign', data: {
+          'toUserId': toUserId,
+          'fromUserId': fromUserId,
+          'includeCustomers': includeCustomers,
+        }));
+    final body = res.data;
+    if (body is Map && body['success'] == false) {
+      throw ApiException(body['message']?.toString() ?? 'Failed to reassign',
+          statusCode: res.statusCode, data: body);
+    }
+    return (body is Map ? body['message']?.toString() : null) ?? 'Work reassigned';
+  }
 }
 
 final loanRepoProvider = Provider<LoanRepo>((ref) => LoanRepo(ref.read(apiClientProvider)));

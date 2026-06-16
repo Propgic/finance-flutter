@@ -19,6 +19,7 @@ const _navItems = <NavItem>[
   NavItem('Dashboard', Icons.dashboard_outlined, '/dashboard'),
   NavItem('Customers', Icons.people_outline, '/customers', permission: 'customers.view'),
   NavItem('Loans', Icons.request_quote_outlined, '/loans', featureFlag: 'enableLoans', permission: 'loans.view'),
+  NavItem('Assign Loans', Icons.manage_accounts_outlined, '/assign-loans', featureFlag: 'enableLoans', permission: 'loans.assign'),
   NavItem('Loan Groups', Icons.groups_outlined, '/loan-groups', featureFlag: 'enableGroupLoan', permission: 'loans.view'),
   NavItem('Collections', Icons.payments_outlined, '/collections', featureFlag: 'enableLoans', permission: 'collections.view'),
   NavItem('Savings', Icons.savings_outlined, '/savings', featureFlag: 'enableSavings', permission: 'savings.view'),

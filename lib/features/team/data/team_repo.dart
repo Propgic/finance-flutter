@@ -5,8 +5,8 @@ class TeamRepo {
   final ApiClient api;
   TeamRepo(this.api);
 
-  Future<List<dynamic>> list() async {
-    final d = await api.get('/team');
+  Future<List<dynamic>> list({int? limit}) async {
+    final d = await api.get('/team', query: limit == null ? null : {'limit': limit});
     if (d is List) return d;
     if (d is Map && d['data'] is List) return d['data'];
     return const [];

@@ -13,6 +13,7 @@ import '../../features/customers/ui/customer_form_page.dart';
 import '../../features/customers/ui/customer_detail_page.dart';
 import '../../features/customers/ui/deleted_customers_page.dart';
 import '../../features/loans/ui/loan_list_page.dart';
+import '../../features/loans/ui/assign_loan_page.dart';
 import '../../features/loans/ui/loan_create_page.dart';
 import '../../features/loans/ui/loan_detail_page.dart';
 import '../../features/loans/ui/overdue_list_page.dart';
@@ -96,6 +97,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/customers/:id/edit', builder: (_, s) => CustomerFormPage(id: s.pathParameters['id'])),
 
           GoRoute(path: '/loans', builder: (_, state) => LoanListPage(fromDate: state.uri.queryParameters['fromDate'], toDate: state.uri.queryParameters['toDate'])),
+          GoRoute(path: '/assign-loans', builder: (_, __) => const AssignLoanPage()),
           GoRoute(path: '/loans/new', builder: (_, __) => const LoanCreatePage()),
           GoRoute(path: '/loans/overdue', builder: (_, __) => const OverdueListPage()),
           GoRoute(path: '/loans/:id', builder: (_, s) => LoanDetailPage(id: s.pathParameters['id']!)),
