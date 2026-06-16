@@ -73,11 +73,26 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
                   final ok = await confirmDialog(context, message: 'Close this loan?');
                   if (ok) _doAction(() => ref.read(loanRepoProvider).close(widget.id), 'Loan closed');
                 }
+                if (v == 'archive') {
+                  final ok = await confirmDialog(context,
+                      title: 'Archive Loan',
+                      message: 'Archiving keeps the loan and its history but removes it from Outstanding, Overdue and Amount-in-Market totals. Nothing is marked paid or closed. You can unarchive it any time.',
+                      confirmText: 'Archive');
+                  if (ok) _doAction(() => ref.read(loanRepoProvider).archive(widget.id), 'Loan archived');
+                }
+                if (v == 'unarchive') {
+                  final ok = await confirmDialog(context, message: 'Restore this loan to the active book?', confirmText: 'Unarchive');
+                  if (ok) _doAction(() => ref.read(loanRepoProvider).unarchive(widget.id), 'Loan unarchived');
+                }
               },
               itemBuilder: (_) => [
                 if (isMgr && l['status'] == 'APPROVED') const PopupMenuItem(value: 'disburse', child: Text('Disburse')),
                 if (isMgr && (l['status'] == 'PENDING' || l['status'] == 'APPROVED')) const PopupMenuItem(value: 'reject', child: Text('Reject')),
                 if (isMgr && l['status'] == 'ACTIVE') const PopupMenuItem(value: 'close', child: Text('Close Loan')),
+                if (isMgr && l['archivedAt'] == null && (l['status'] == 'ACTIVE' || l['status'] == 'DEFAULTED'))
+                  const PopupMenuItem(value: 'archive', child: Text('Archive')),
+                if (isMgr && l['archivedAt'] != null)
+                  const PopupMenuItem(value: 'unarchive', child: Text('Unarchive')),
               ],
             ),
             orElse: () => const SizedBox.shrink(),
@@ -138,6 +153,29 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
+        if (l['archivedAt'] != null)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.archive_outlined, size: 18, color: Colors.grey.shade600),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Archived — excluded from Outstanding, Overdue and Amount-in-Market totals.'
+                    '${(l['archiveReason']?.toString().isNotEmpty ?? false) ? '\n${l['archiveReason']}' : ''}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                  ),
+                ),
+              ],
+            ),
+          ),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(14),

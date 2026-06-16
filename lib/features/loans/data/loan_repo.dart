@@ -16,6 +16,7 @@ class LoanRepo {
     String? assignedToId,
     String? fromDate,
     String? toDate,
+    bool archived = false,
   }) async {
     final q = <String, dynamic>{'page': page, 'limit': limit};
     if (search?.isNotEmpty ?? false) q['search'] = search;
@@ -24,6 +25,7 @@ class LoanRepo {
     if (assignedToId?.isNotEmpty ?? false) q['assignedToId'] = assignedToId;
     if (fromDate?.isNotEmpty ?? false) q['fromDate'] = fromDate;
     if (toDate?.isNotEmpty ?? false) q['toDate'] = toDate;
+    if (archived) q['archived'] = 'true';
     final res = await api.raw(() => api.dio.get('/loans', queryParameters: q));
     return Map<String, dynamic>.from(res.data as Map);
   }
@@ -53,6 +55,14 @@ class LoanRepo {
   Future<void> disburse(String id) async => api.patch('/loans/$id/disburse');
   Future<void> reject(String id) async => api.patch('/loans/$id/reject');
   Future<void> close(String id) async => api.patch('/loans/$id/close');
+
+  /// Archives a loan: hides it from the active book (Outstanding / Overdue /
+  /// Amount-in-Market totals) without deleting or closing it. Reversible.
+  Future<void> archive(String id, {String? reason}) async =>
+      api.patch('/loans/$id/archive', data: {if (reason?.isNotEmpty ?? false) 'reason': reason});
+
+  /// Restores an archived loan back into the active book.
+  Future<void> unarchive(String id) async => api.patch('/loans/$id/unarchive');
 
   Future<Map<String, dynamic>> closureSummary(String id) async {
     final d = await api.get('/loans/$id/closure-summary');

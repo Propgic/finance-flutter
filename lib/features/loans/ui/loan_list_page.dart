@@ -132,6 +132,7 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
   String? _resolvedStatus() {
     if (_statusTab == 'ACTIVE') return 'ACTIVE';
     if (_statusTab == 'CLOSED') return 'CLOSED';
+    if (_statusTab == 'ARCHIVED') return null;
     return _statusFilter;
   }
 
@@ -156,6 +157,7 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
             assignedToId: _assigneeFilter,
             fromDate: _fromDate,
             toDate: _toDate,
+            archived: _statusTab == 'ARCHIVED',
           );
       final data = (res['data'] as List?) ?? const [];
       final pg = Map<String, dynamic>.from(res['pagination'] ?? {});
@@ -375,6 +377,7 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
                 for (final pill in const [
                   ['ACTIVE', 'Active'],
                   ['CLOSED', 'Closed'],
+                  ['ARCHIVED', 'Archived'],
                   ['ALL', 'All'],
                 ]) ...[
                   Expanded(
