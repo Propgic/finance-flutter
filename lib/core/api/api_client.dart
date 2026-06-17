@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../maintenance/maintenance_controller.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -63,6 +64,10 @@ class ApiClient {
         msg = data['message'].toString();
       } else if (e.message != null) {
         msg = e.message!;
+      }
+      if (code == 503) {
+        // Platform-wide or per-org maintenance — show the full-screen blocker.
+        ref.read(maintenanceProvider.notifier).trigger(msg);
       }
       if (code == 401) {
         // token invalid; clear and bubble up

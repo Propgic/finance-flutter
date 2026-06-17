@@ -5,6 +5,7 @@ import 'core/auth/auth_controller.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/update/update_gate.dart';
+import 'core/maintenance/maintenance_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,8 +27,10 @@ class FinanceApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       routerConfig: router,
-      // Enforce the app-store version gate above every route.
-      builder: (context, child) => UpdateGate(child: child ?? const SizedBox.shrink()),
+      // Maintenance blocker sits above the version gate and every route.
+      builder: (context, child) => MaintenanceGate(
+        child: UpdateGate(child: child ?? const SizedBox.shrink()),
+      ),
     );
   }
 }
