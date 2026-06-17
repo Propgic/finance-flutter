@@ -96,6 +96,10 @@ class _LoanReportPageState extends ConsumerState<LoanReportPage> {
     final totalDisbursed = _data.fold<num>(0, (s, r) => s + toNum(r['disbursed']));
     final totalInterest = _data.fold<num>(0, (s, r) => s + toNum(r['interest']));
     final totalOutstanding = _data.fold<num>(0, (s, r) => s + toNum(r['outstanding']));
+    // The backend nulls interest/outstanding when the org hides those fields from
+    // this role (numbers otherwise), so null means "redacted for me" — drop the cards.
+    final interestHidden = _data.any((r) => r['interest'] == null);
+    final outstandingHidden = _data.any((r) => r['outstanding'] == null);
 
     return Scaffold(
       appBar: AppBar(
@@ -122,11 +126,15 @@ class _LoanReportPageState extends ConsumerState<LoanReportPage> {
                     child: Column(children: [
                       Row(children: [
                         Expanded(child: _sumCard('Total Disbursed', formatCurrency(totalDisbursed), '${_data.length} loans', AppColors.primary)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _sumCard('Interest Earned', formatCurrency(totalInterest), '', AppColors.accent)),
+                        if (!interestHidden) ...[
+                          const SizedBox(width: 8),
+                          Expanded(child: _sumCard('Interest Earned', formatCurrency(totalInterest), '', AppColors.accent)),
+                        ],
                       ]),
-                      const SizedBox(height: 8),
-                      _sumCard('Outstanding', formatCurrency(totalOutstanding), '', AppColors.danger),
+                      if (!outstandingHidden) ...[
+                        const SizedBox(height: 8),
+                        _sumCard('Outstanding', formatCurrency(totalOutstanding), '', AppColors.danger),
+                      ],
                     ]),
                   ),
                   if (_data.isEmpty) const EmptyView(message: 'No data for selected filters') else ..._data.map(_loanTile),

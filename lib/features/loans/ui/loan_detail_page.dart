@@ -229,11 +229,14 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
           child: Column(
             children: [
               KeyValueRow(label: 'Principal', value: formatCurrency(l['principalAmount'])),
-              KeyValueRow(label: 'Interest Rate', value: '${l['interestRate'] ?? '-'}%'),
+              if (!loanFieldHidden(l, 'interestRate'))
+                KeyValueRow(label: 'Interest Rate', value: '${l['interestRate'] ?? '-'}%'),
               KeyValueRow(label: 'Tenure', value: '${l['tenure'] ?? ''} ${l['tenureType'] ?? ''}'),
               KeyValueRow(label: 'EMI', value: formatCurrency(l['emiAmount'])),
-              KeyValueRow(label: 'Total Payable', value: formatCurrency(l['totalPayable'])),
-              KeyValueRow(label: 'Processing Fee', value: formatCurrency(l['processingFee'])),
+              if (!loanFieldHidden(l, 'totalPayable'))
+                KeyValueRow(label: 'Total Payable', value: formatCurrency(l['totalPayable'])),
+              if (!loanFieldHidden(l, 'processingFee'))
+                KeyValueRow(label: 'Processing Fee', value: formatCurrency(l['processingFee'])),
               KeyValueRow(label: 'Start Date', value: formatDate(l['startDate'])),
               KeyValueRow(label: 'Disbursed', value: formatDate(l['disbursedDate'])),
               KeyValueRow(label: 'Maturity', value: formatDate(l['maturityDate'])),

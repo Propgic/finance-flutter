@@ -299,7 +299,8 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  Text(formatCurrency(l['totalPayable']), style: const TextStyle(fontWeight: FontWeight.w600)),
+                                  if (!loanFieldHidden(l, 'totalPayable'))
+                                    Text(formatCurrency(l['totalPayable']), style: const TextStyle(fontWeight: FontWeight.w600)),
                                 ],
                               ),
                             ),
@@ -422,7 +423,8 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
               spacing: 16,
               runSpacing: 8,
               children: [
-                _miniStat('Total Payable', formatCurrency(totalPayable)),
+                if (!loanFieldHidden(loan, 'totalPayable'))
+                  _miniStat('Total Payable', formatCurrency(totalPayable)),
                 _miniStat('Total Paid', formatCurrency(totalPaid), color: AppColors.accent),
                 _miniStat('Balance', formatCurrency(balance)),
                 if (overdue > 0) _miniStat('Overdue', formatCurrency(overdue), color: AppColors.danger),

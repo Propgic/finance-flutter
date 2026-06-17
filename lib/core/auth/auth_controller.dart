@@ -14,7 +14,7 @@ class AuthController extends Notifier<AuthState> {
 
   Future<void> _bootstrap() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
+    final token = await TokenStore.access();
     final userStr = prefs.getString('user');
     final orgStr = prefs.getString('org');
     if (token == null || userStr == null || orgStr == null) {
@@ -69,18 +69,25 @@ class AuthController extends Notifier<AuthState> {
     final user = AuthUser.fromJson(Map<String, dynamic>.from(data['user']));
     final org = AuthOrg.fromJson(Map<String, dynamic>.from(data['org']));
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('token', token);
+    // Tokens → secure storage; profile → SharedPreferences (non-sensitive).
+    await TokenStore.save(access: token, refresh: data['refreshToken'] as String?);
     await prefs.setString('user', jsonEncode(user.toJson()));
     await prefs.setString('org', jsonEncode(org.toJson()));
     state = AuthState(token: token, user: user, org: org, loading: false);
   }
 
   Future<void> logout() async {
+    // Best-effort server-side revoke of the refresh token, then local teardown.
+    try {
+      final rt = await TokenStore.refresh();
+      await ref.read(apiClientProvider).post('/auth/logout', data: {'refreshToken': rt});
+    } catch (_) {}
     await _clear();
   }
 
   Future<void> _clear() async {
     final prefs = await SharedPreferences.getInstance();
+    await TokenStore.clear();
     await prefs.remove('token');
     await prefs.remove('user');
     await prefs.remove('org');
