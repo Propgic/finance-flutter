@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
@@ -17,13 +19,19 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
   final _formKey = GlobalKey<FormState>();
   final _c = <String, TextEditingController>{
     for (final k in [
-      'firstName','lastName','fatherName','phone','alternatePhone','email','aadhaarNumber','panNumber',
+      'firstName','lastName','fatherName','phone','alternatePhone','email','aadhaarNumber','panNumber','verifiedBy',
       'address','city','district','state','pincode','occupation','monthlyIncome',
       'bankName','accountNumber','ifscCode','nomineeName','nomineeRelation','nomineePhone',
+      'introducerName','introducerPhone',
     ]) k: TextEditingController(),
   };
   String _gender = 'MALE';
   DateTime? _dob;
+  File? _photo;
+  String? _existingPhotoUrl;
+  File? _introducerPhoto;
+  String? _existingIntroducerPhotoUrl;
+  final List<File> _documents = [];
   bool _loading = false;
   bool _saving = false;
 
@@ -40,6 +48,8 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
       _c.forEach((k, ctrl) => ctrl.text = c[k]?.toString() ?? '');
       _gender = c['gender']?.toString() ?? 'MALE';
       _dob = tryParseDate(c['dateOfBirth']?.toString());
+      _existingPhotoUrl = c['photo']?.toString();
+      _existingIntroducerPhotoUrl = c['introducerPhoto']?.toString();
     } catch (e) {
       showToast('Failed to load: $e', error: true);
     } finally {
@@ -68,16 +78,29 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
         if (v.isNotEmpty) {
           if (k == 'monthlyIncome') {
             body[k] = double.tryParse(v);
+          } else if (k == 'panNumber') {
+            body[k] = v.toUpperCase();
           } else {
             body[k] = v;
           }
         }
       });
       if (widget.id == null) {
-        await ref.read(customerRepoProvider).create(body);
+        await ref.read(customerRepoProvider).create(
+              body,
+              photo: _photo,
+              introducerPhoto: _introducerPhoto,
+              documents: _documents,
+            );
         showToast('Customer created');
       } else {
-        await ref.read(customerRepoProvider).update(widget.id!, body);
+        await ref.read(customerRepoProvider).update(
+              widget.id!,
+              body,
+              photo: _photo,
+              introducerPhoto: _introducerPhoto,
+              documents: _documents,
+            );
         showToast('Customer updated');
       }
       if (mounted) context.go('/customers');
@@ -88,13 +111,106 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
     }
   }
 
-  Widget _text(String key, String label, {bool required = false, TextInputType? keyboard, int maxLines = 1, String? Function(String?)? validator}) {
+  Future<File?> _pickImage() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return null;
+    final x = await ImagePicker().pickImage(source: source, maxWidth: 1600, imageQuality: 80);
+    return x == null ? null : File(x.path);
+  }
+
+  Future<void> _pickPhoto() async {
+    final f = await _pickImage();
+    if (f != null) setState(() => _photo = f);
+  }
+
+  Future<void> _pickIntroducerPhoto() async {
+    final f = await _pickImage();
+    if (f != null) setState(() => _introducerPhoto = f);
+  }
+
+  Future<void> _pickDocuments() async {
+    final xs = await ImagePicker().pickMultiImage(maxWidth: 1600, imageQuality: 80);
+    if (xs.isNotEmpty) setState(() => _documents.addAll(xs.map((x) => File(x.path))));
+  }
+
+  Widget _photoPicker({required String label, File? file, String? existingUrl, required VoidCallback onPick, required VoidCallback onClear}) {
+    final hasNew = file != null;
+    final resolved = resolveUrl(existingUrl);
+    ImageProvider? preview;
+    if (hasNew) {
+      preview = FileImage(file);
+    } else if (resolved != null) {
+      preview = NetworkImage(resolved);
+    }
+    return Row(
+      children: [
+        GestureDetector(
+          onTap: onPick,
+          child: Container(
+            width: 84,
+            height: 84,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300),
+              image: preview == null ? null : DecorationImage(image: preview, fit: BoxFit.cover),
+            ),
+            child: preview == null
+                ? const Icon(Icons.add_a_photo_outlined, color: Colors.grey)
+                : null,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  TextButton(onPressed: onPick, child: Text(preview == null ? 'Upload' : 'Change')),
+                  if (hasNew)
+                    TextButton(
+                      onPressed: onClear,
+                      child: const Text('Remove', style: TextStyle(color: Colors.red)),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _text(String key, String label, {bool required = false, TextInputType? keyboard, int maxLines = 1, TextCapitalization textCapitalization = TextCapitalization.none, String? Function(String?)? validator}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextFormField(
         controller: _c[key],
         keyboardType: keyboard,
         maxLines: maxLines,
+        textCapitalization: textCapitalization,
         decoration: InputDecoration(labelText: required ? '$label *' : label),
         validator: validator ??
             (required
@@ -154,14 +270,23 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
                     if (!RegExp(r'^\d{10}$').hasMatch(v)) return 'Must be 10 digits';
                     return null;
                   }),
-                  _text('alternatePhone', 'Alt Phone', keyboard: TextInputType.phone),
+                  _text('alternatePhone', 'Alt Phone', keyboard: TextInputType.phone, validator: (v) {
+                    if (v == null || v.trim().isEmpty) return null;
+                    if (!RegExp(r'^\d{10}$').hasMatch(v.trim())) return 'Must be 10 digits';
+                    return null;
+                  }),
                   _text('email', 'Email', keyboard: TextInputType.emailAddress),
                   _text('aadhaarNumber', 'Aadhaar', required: true, keyboard: TextInputType.number, validator: (v) {
                     if (v == null || v.isEmpty) return 'Required';
                     if (!RegExp(r'^\d{12}$').hasMatch(v)) return 'Must be 12 digits';
                     return null;
                   }),
-                  _text('panNumber', 'PAN (optional)'),
+                  _text('panNumber', 'PAN (optional)', textCapitalization: TextCapitalization.characters, validator: (v) {
+                    if (v == null || v.trim().isEmpty) return null;
+                    if (!RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$').hasMatch(v.trim().toUpperCase())) return 'Invalid PAN';
+                    return null;
+                  }),
+                  _text('verifiedBy', 'Verified By'),
                 ],
               ),
             ),
@@ -200,6 +325,63 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
                   _text('nomineeName', 'Nominee Name'),
                   _text('nomineeRelation', 'Relation'),
                   _text('nomineePhone', 'Nominee Phone', keyboard: TextInputType.phone),
+                ],
+              ),
+            ),
+            SectionCard(
+              title: 'Attachments',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _photoPicker(
+                    label: 'Customer Photo',
+                    file: _photo,
+                    existingUrl: _existingPhotoUrl,
+                    onPick: _pickPhoto,
+                    onClear: () => setState(() => _photo = null),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _documents.isEmpty ? 'No documents selected' : '${_documents.length} document(s) selected',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: _pickDocuments,
+                        icon: const Icon(Icons.attach_file),
+                        label: const Text('Add'),
+                      ),
+                      if (_documents.isNotEmpty)
+                        TextButton(
+                          onPressed: () => setState(_documents.clear),
+                          child: const Text('Clear', style: TextStyle(color: Colors.red)),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SectionCard(
+              title: 'Introducer',
+              child: Column(
+                children: [
+                  _photoPicker(
+                    label: 'Introducer Photo',
+                    file: _introducerPhoto,
+                    existingUrl: _existingIntroducerPhotoUrl,
+                    onPick: _pickIntroducerPhoto,
+                    onClear: () => setState(() => _introducerPhoto = null),
+                  ),
+                  const SizedBox(height: 12),
+                  _text('introducerName', 'Introducer Name'),
+                  _text('introducerPhone', 'Introducer Phone', keyboard: TextInputType.phone, validator: (v) {
+                    if (v == null || v.trim().isEmpty) return null;
+                    if (!RegExp(r'^\d{10}$').hasMatch(v.trim())) return 'Must be 10 digits';
+                    return null;
+                  }),
                 ],
               ),
             ),

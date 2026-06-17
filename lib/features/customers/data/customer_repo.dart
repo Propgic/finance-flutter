@@ -22,14 +22,48 @@ class CustomerRepo {
     return Map<String, dynamic>.from(d as Map);
   }
 
-  Future<Map<String, dynamic>> create(Map<String, dynamic> body) async {
-    final d = await api.post('/customers', data: body);
+  Future<Map<String, dynamic>> create(
+    Map<String, dynamic> body, {
+    File? photo,
+    File? introducerPhoto,
+    List<File> documents = const [],
+  }) async {
+    final payload = await _payload(body, photo, introducerPhoto, documents);
+    final d = await api.post('/customers', data: payload);
     return Map<String, dynamic>.from(d as Map);
   }
 
-  Future<Map<String, dynamic>> update(String id, Map<String, dynamic> body) async {
-    final d = await api.put('/customers/$id', data: body);
+  Future<Map<String, dynamic>> update(
+    String id,
+    Map<String, dynamic> body, {
+    File? photo,
+    File? introducerPhoto,
+    List<File> documents = const [],
+  }) async {
+    final payload = await _payload(body, photo, introducerPhoto, documents);
+    final d = await api.put('/customers/$id', data: payload);
     return Map<String, dynamic>.from(d as Map);
+  }
+
+  /// Builds the request body. When any file is attached, sends multipart so the
+  /// backend's upload.fields([photo, introducerPhoto, documents]) middleware can
+  /// store them; otherwise sends a plain JSON map. Mirrors the web CustomerForm.
+  Future<dynamic> _payload(Map<String, dynamic> body, File? photo, File? introducerPhoto, List<File> documents) async {
+    if (photo == null && introducerPhoto == null && documents.isEmpty) return body;
+    final form = FormData();
+    body.forEach((k, v) {
+      if (v != null) form.fields.add(MapEntry(k, v.toString()));
+    });
+    Future<void> addFile(String field, File f) async {
+      final name = f.path.split(Platform.pathSeparator).last;
+      form.files.add(MapEntry(field, await MultipartFile.fromFile(f.path, filename: name)));
+    }
+    if (photo != null) await addFile('photo', photo);
+    if (introducerPhoto != null) await addFile('introducerPhoto', introducerPhoto);
+    for (final f in documents) {
+      await addFile('documents', f);
+    }
+    return form;
   }
 
   Future<void> toggleStatus(String id) async => api.patch('/customers/$id/status');
