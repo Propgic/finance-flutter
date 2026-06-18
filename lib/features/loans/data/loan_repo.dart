@@ -16,6 +16,7 @@ class LoanRepo {
     String? assignedToId,
     String? fromDate,
     String? toDate,
+    bool archived = false,
   }) async {
     final q = <String, dynamic>{'page': page, 'limit': limit};
     if (search?.isNotEmpty ?? false) q['search'] = search;
@@ -24,6 +25,7 @@ class LoanRepo {
     if (assignedToId?.isNotEmpty ?? false) q['assignedToId'] = assignedToId;
     if (fromDate?.isNotEmpty ?? false) q['fromDate'] = fromDate;
     if (toDate?.isNotEmpty ?? false) q['toDate'] = toDate;
+    if (archived) q['archived'] = 'true';
     final res = await api.raw(() => api.dio.get('/loans', queryParameters: q));
     return Map<String, dynamic>.from(res.data as Map);
   }
@@ -53,6 +55,14 @@ class LoanRepo {
   Future<void> disburse(String id) async => api.patch('/loans/$id/disburse');
   Future<void> reject(String id) async => api.patch('/loans/$id/reject');
   Future<void> close(String id) async => api.patch('/loans/$id/close');
+
+  /// Archives a loan: hides it from the active book (Outstanding / Overdue /
+  /// Amount-in-Market totals) without deleting or closing it. Reversible.
+  Future<void> archive(String id, {String? reason}) async =>
+      api.patch('/loans/$id/archive', data: {if (reason?.isNotEmpty ?? false) 'reason': reason});
+
+  /// Restores an archived loan back into the active book.
+  Future<void> unarchive(String id) async => api.patch('/loans/$id/unarchive');
 
   Future<Map<String, dynamic>> closureSummary(String id) async {
     final d = await api.get('/loans/$id/closure-summary');
@@ -85,6 +95,50 @@ class LoanRepo {
   /// Renames the document at [index] (PUT /loans/:id/documents/:docIndex { title }).
   Future<void> renameDocument(String id, int index, String title) async =>
       api.put('/loans/$id/documents/$index', data: {'title': title});
+
+  /// Lightweight feed for the Assign Loan screen: every active loan with its
+  /// outstanding balance and current field officer ({ id, name } | null).
+  Future<List<dynamic>> assignable() async {
+    final d = await api.get('/loans/assignable');
+    if (d is List) return d;
+    if (d is Map && d['data'] is List) return d['data'];
+    return const [];
+  }
+
+  /// Saves an employee's loan "basket": [loanIds] become their exact set of active
+  /// loans — unassigned loans are picked up, and any of their loans not in the list
+  /// are released. Only UNASSIGNED loans can be picked up (the server rejects stealing
+  /// a loan that another agent still holds). Returns the server's summary message.
+  Future<String> assignBasket(String employeeId, List<String> loanIds) async {
+    final res = await api.raw(() => api.dio.post('/loans/assign',
+        data: {'employeeId': employeeId, 'loanIds': loanIds}));
+    final body = res.data;
+    if (body is Map && body['success'] == false) {
+      throw ApiException(body['message']?.toString() ?? 'Failed to assign',
+          statusCode: res.statusCode, data: body);
+    }
+    return (body is Map ? body['message']?.toString() : null) ?? 'Assignment saved';
+  }
+
+  /// Hands over an officer's entire live workload to another officer (e.g. when they
+  /// resign), optionally moving their assigned customers too. Returns the summary.
+  Future<String> reassignFrom({
+    required String toUserId,
+    required String fromUserId,
+    bool includeCustomers = true,
+  }) async {
+    final res = await api.raw(() => api.dio.post('/loans/reassign', data: {
+          'toUserId': toUserId,
+          'fromUserId': fromUserId,
+          'includeCustomers': includeCustomers,
+        }));
+    final body = res.data;
+    if (body is Map && body['success'] == false) {
+      throw ApiException(body['message']?.toString() ?? 'Failed to reassign',
+          statusCode: res.statusCode, data: body);
+    }
+    return (body is Map ? body['message']?.toString() : null) ?? 'Work reassigned';
+  }
 }
 
 final loanRepoProvider = Provider<LoanRepo>((ref) => LoanRepo(ref.read(apiClientProvider)));

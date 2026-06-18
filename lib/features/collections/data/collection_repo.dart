@@ -67,7 +67,11 @@ class CollectionRepo {
   }
 
   Future<void> verify(String id, {required bool approve, String? remarks}) async {
-    await api.patch('/collections/$id/verify', data: {'approve': approve, if (remarks != null) 'remarks': remarks});
+    // Backend expects { status: 'VERIFIED' | 'REJECTED', notes } — not { approve, remarks }.
+    await api.patch('/collections/$id/verify', data: {
+      'status': approve ? 'VERIFIED' : 'REJECTED',
+      if (remarks != null) 'notes': remarks,
+    });
   }
 }
 

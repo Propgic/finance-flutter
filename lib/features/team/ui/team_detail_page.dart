@@ -7,6 +7,7 @@ import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
+import '../../loans/data/loan_repo.dart';
 import '../data/team_repo.dart';
 
 final teamDetailProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, id) async {
@@ -44,26 +45,99 @@ class TeamDetailPage extends ConsumerWidget {
     on ApiException catch (e) { showToast(e.message, error: true); }
   }
 
+  // Hand this member's entire live workload (loans, optionally customers) over to
+  // another member — the one-tap path when someone resigns.
+  Future<void> _reassign(BuildContext context, WidgetRef ref) async {
+    final member = ref.read(teamDetailProvider(id)).value;
+    final fromName = member?['name']?.toString() ?? 'this member';
+    final stats = member?['stats'] is Map ? Map<String, dynamic>.from(member!['stats'] as Map) : const {};
+
+    List<Map<String, dynamic>> targets;
+    try {
+      targets = (await ref.read(teamRepoProvider).list(limit: 500))
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .where((m) => m['isActive'] == true && m['id'].toString() != id)
+          .toList();
+    } on ApiException catch (e) { showToast(e.message, error: true); return; }
+    if (targets.isEmpty) { showToast('No other active member to reassign to', error: true); return; }
+    if (!context.mounted) return;
+
+    String? toId;
+    bool includeCustomers = true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Reassign Work'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Move ${stats['loanCount'] ?? 0} loan(s)${includeCustomers ? ' and ${stats['customerCount'] ?? 0} customer(s)' : ''} from $fromName to another member. Closed loans and past collections stay as history.',
+                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: toId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Reassign to', border: OutlineInputBorder()),
+                  items: targets
+                      .map((m) => DropdownMenuItem(value: m['id'].toString(), child: Text(m['name']?.toString() ?? '-', overflow: TextOverflow.ellipsis)))
+                      .toList(),
+                  onChanged: (v) => setLocal(() => toId = v),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: includeCustomers,
+                  onChanged: (v) => setLocal(() => includeCustomers = v ?? true),
+                  title: const Text('Also move their customers'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            ElevatedButton(onPressed: toId == null ? null : () => Navigator.pop(ctx, true), child: const Text('Reassign')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || toId == null) return;
+    try {
+      final msg = await ref.read(loanRepoProvider).reassignFrom(toUserId: toId!, fromUserId: id, includeCustomers: includeCustomers);
+      ref.invalidate(teamDetailProvider(id));
+      showToast(msg);
+    } on ApiException catch (e) { showToast(e.message, error: true); }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(teamDetailProvider(id));
-    final isAdmin = ref.watch(authProvider).hasRole('ORG_ADMIN');
+    final auth = ref.watch(authProvider);
+    final isAdmin = auth.hasRole('ORG_ADMIN');
+    final showReassign = auth.hasPermission('loans.assign') && auth.user?.id != id;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Team Member'),
         actions: [
           IconButton(icon: const Icon(Icons.edit), onPressed: () => context.push('/team/$id/edit')),
-          if (isAdmin)
+          if (isAdmin || showReassign)
             PopupMenuButton<String>(
               onSelected: (v) {
+                if (v == 'reassign') _reassign(context, ref);
                 if (v == 'toggle') _toggle(ref);
                 if (v == 'reset') _reset(context, ref);
                 if (v == 'delete') _delete(context, ref);
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'toggle', child: Text('Toggle Active')),
-                PopupMenuItem(value: 'reset', child: Text('Reset Password')),
-                PopupMenuItem(value: 'delete', child: Text('Delete')),
+              itemBuilder: (_) => [
+                if (showReassign) const PopupMenuItem(value: 'reassign', child: Text('Reassign Work')),
+                if (isAdmin) const PopupMenuItem(value: 'toggle', child: Text('Toggle Active')),
+                if (isAdmin) const PopupMenuItem(value: 'reset', child: Text('Reset Password')),
+                if (isAdmin) const PopupMenuItem(value: 'delete', child: Text('Delete')),
               ],
             ),
         ],

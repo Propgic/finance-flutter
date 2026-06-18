@@ -89,10 +89,16 @@ class _ReceiptPageState extends ConsumerState<ReceiptPage> {
           final auth = ref.watch(authProvider);
           final role = auth.user?.role;
           final isPending = (collection['verificationStatus']?.toString() ?? '') == 'PENDING';
+          // Field officers may only edit the collected amount within 24 hours of recording it.
+          final created = DateTime.tryParse(collection['createdAt']?.toString() ?? '');
+          final withinFieldOfficerEditWindow =
+              created != null && DateTime.now().difference(created.toLocal()) <= const Duration(hours: 24);
           final canEdit = isPending &&
               (role == 'ORG_ADMIN' ||
                   role == 'MANAGER' ||
-                  (role == 'FIELD_OFFICER' && collection['collectedById'] == auth.user?.id));
+                  (role == 'FIELD_OFFICER' &&
+                      collection['collectedById'] == auth.user?.id &&
+                      withinFieldOfficerEditWindow));
           return ListView(
             padding: const EdgeInsets.all(14),
             children: [

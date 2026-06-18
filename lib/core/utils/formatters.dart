@@ -59,6 +59,16 @@ List<dynamic> extractList(dynamic data) {
   return const [];
 }
 
+/// Whether a sensitive loan field was redacted server-side for the current
+/// user's role. An org admin configures this under Settings → Loan Field
+/// Visibility; the API then nulls the value and lists the hidden raw keys in
+/// `_hiddenFields` (e.g. interestRate, totalInterest, processingFee,
+/// totalPayable) so clients omit the row instead of showing a blank/zero.
+bool loanFieldHidden(Map? loan, String key) {
+  final hidden = loan?['_hiddenFields'];
+  return hidden is List && hidden.contains(key);
+}
+
 num toNum(dynamic v, [num fallback = 0]) {
   if (v == null) return fallback;
   if (v is num) return v;
