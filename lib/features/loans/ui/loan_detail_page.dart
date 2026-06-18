@@ -57,7 +57,7 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
         title: const Text('Loan Details'),
         bottom: TabBar(
           controller: _tabs,
-          tabs: const [Tab(text: 'Details'), Tab(text: 'EMI Schedule'), Tab(text: 'Collections')],
+          tabs: const [Tab(text: 'Details'), Tab(text: 'Collections'), Tab(text: 'EMI Schedule')],
         ),
         actions: [
           data.maybeWhen(
@@ -111,7 +111,7 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
         error: (e, _) => ErrorView(message: e.toString(), onRetry: () => ref.invalidate(loanDetailProvider(widget.id))),
         data: (l) => TabBarView(
           controller: _tabs,
-          children: [_infoTab(l), _emiTab(), _collectionsTab(l)],
+          children: [_infoTab(l), _collectionsTab(l), _emiTab()],
         ),
       ),
     );

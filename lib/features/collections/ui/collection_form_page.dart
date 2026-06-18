@@ -376,9 +376,13 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
         ? toNum(loan['totalPaid'])
         : _emis.fold<num>(0, (s, e) => s + toNum(e['paidAmount']));
     final balance = loan['balance'] != null ? toNum(loan['balance']) : totalPayable - totalPaid;
-    final overdue = _emis
-        .where((e) => e['status'] == 'OVERDUE')
-        .fold<num>(0, (s, e) => s + toNum(e['emiAmount']) + toNum(e['lateFee']) - toNum(e['paidAmount']));
+    // Prefer the API's overdue (pending folded in when the org opts in); summing the
+    // verified schedule client-side would ignore the setting.
+    final overdue = loan['overdueAmount'] != null
+        ? toNum(loan['overdueAmount'])
+        : _emis
+            .where((e) => e['status'] == 'OVERDUE')
+            .fold<num>(0, (s, e) => s + toNum(e['emiAmount']) + toNum(e['lateFee']) - toNum(e['paidAmount']));
     return Card(
       color: AppColors.primary.withValues(alpha: 0.06),
       child: Padding(
