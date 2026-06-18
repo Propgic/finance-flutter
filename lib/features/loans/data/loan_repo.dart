@@ -51,6 +51,12 @@ class LoanRepo {
   }
 
   Future<void> update(String id, Map<String, dynamic> body) async => api.put('/loans/$id', data: body);
+
+  /// Admin correction of structural terms after collections exist
+  /// (PATCH /loans/:id/correct). Rebuilds the EMI schedule from the corrected
+  /// terms and re-applies recorded payments. Requires a `reason`; gated server-side
+  /// by ORG_ADMIN + the `enableLoanCorrection` feature flag.
+  Future<void> correct(String id, Map<String, dynamic> body) async => api.patch('/loans/$id/correct', data: body);
   Future<void> delete(String id) async => api.delete('/loans/$id');
   Future<void> disburse(String id) async => api.patch('/loans/$id/disburse');
   Future<void> reject(String id) async => api.patch('/loans/$id/reject');

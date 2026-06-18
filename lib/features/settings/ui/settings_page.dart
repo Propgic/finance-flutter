@@ -473,6 +473,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 value: f['enableCustomerPortal'] == true,
                 onChanged: (v) => _toggleFeature('enableCustomerPortal', v),
               ),
+              SwitchListTile(
+                title: const Text('Edit / Correct Loan Terms'),
+                subtitle: const Text('Allow admins to correct a loan\'s terms and rebuild its EMI schedule after disbursement'),
+                contentPadding: EdgeInsets.zero,
+                value: f['enableLoanCorrection'] == true,
+                onChanged: (v) => _toggleFeature('enableLoanCorrection', v),
+              ),
               const Divider(),
               _featureReadOnly('Loans', f['enableLoans'] == true),
               _featureReadOnly('Savings', f['enableSavings'] == true),

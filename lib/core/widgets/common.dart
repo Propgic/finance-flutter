@@ -171,6 +171,7 @@ Color statusColor(String? status) {
     case 'CLOSED':
     case 'COMPLETED':
     case 'APPROVED':
+    case 'VERIFIED':
       return AppColors.accent;
     case 'PENDING':
     case 'PARTIAL':

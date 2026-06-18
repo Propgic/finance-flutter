@@ -47,6 +47,26 @@ const _statusDropdownOptions = [
   'WRITTEN_OFF',
 ];
 
+/// Mirrors the web loan list "Day" column (LoanList.jsx): 1-indexed days since
+/// disbursement, shown as "Week N" for weekly loans. Returns '-' when there is
+/// no disbursement date or the loan hasn't started yet.
+String _dayWeekLabel(dynamic disbursedDate, String? loanType) {
+  if (disbursedDate == null) return '-';
+  DateTime d;
+  try {
+    d = DateTime.parse(disbursedDate.toString()).toLocal();
+  } catch (_) {
+    return '-';
+  }
+  final days = DateTime.now().difference(d).inDays + 1;
+  if (days <= 0) return '-';
+  if (loanType == 'WEEKLY') {
+    final weeks = days ~/ 7;
+    return weeks < 1 ? '-' : 'Week $weeks';
+  }
+  return 'Day $days';
+}
+
 class LoanListPage extends ConsumerStatefulWidget {
   final String? fromDate;
   final String? toDate;
@@ -414,6 +434,11 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
                             }
                             final l = _items[i];
                             final c = Map<String, dynamic>.from(l['customer'] ?? {});
+                            final dayWeek = _dayWeekLabel(l['disbursedDate'], l['loanType']?.toString());
+                            final timeline = <String>[
+                              if (dayWeek != '-') dayWeek,
+                              if (l['endDate'] != null) 'Ends ${formatDate(l['endDate'])}',
+                            ].join(' · ');
                             return Card(
                               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                               child: ListTile(
@@ -426,6 +451,11 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
                                         style: const TextStyle(fontWeight: FontWeight.w500)),
                                     Text('${l['loanType'] ?? ''} • ${formatCurrency(l['principalAmount'])}',
                                         style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                    Text('Balance: ${formatCurrency(l['balance'])}',
+                                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                    if (timeline.isNotEmpty)
+                                      Text(timeline,
+                                          style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                                     if (l['status'] == 'ACTIVE' && toNum(l['overdueAmount']) > 0) ...[
                                       Text('Overdue: ${formatCurrency(l['overdueAmount'])} (${l['overdueCount']} installment${(l['overdueCount'] ?? 0) > 1 ? 's' : ''})',
                                           style: const TextStyle(fontSize: 11, color: AppColors.danger, fontWeight: FontWeight.w600)),

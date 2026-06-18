@@ -27,7 +27,7 @@ class LoanDetailPage extends ConsumerStatefulWidget {
 }
 
 class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 2, vsync: this);
+  late final TabController _tabs = TabController(length: 3, vsync: this);
 
   @override
   void dispose() {
@@ -50,12 +50,14 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
     final data = ref.watch(loanDetailProvider(widget.id));
     final auth = ref.watch(authProvider);
     final isMgr = auth.hasRole('ORG_ADMIN') || auth.hasRole('MANAGER');
+    final isAdmin = auth.hasRole('ORG_ADMIN');
+    final correctionEnabled = auth.org?.feature('enableLoanCorrection') == true;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Loan Details'),
         bottom: TabBar(
           controller: _tabs,
-          tabs: const [Tab(text: 'Details'), Tab(text: 'EMI Schedule')],
+          tabs: const [Tab(text: 'Details'), Tab(text: 'EMI Schedule'), Tab(text: 'Collections')],
         ),
         actions: [
           data.maybeWhen(
@@ -84,8 +86,13 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
                   final ok = await confirmDialog(context, message: 'Restore this loan to the active book?', confirmText: 'Unarchive');
                   if (ok) _doAction(() => ref.read(loanRepoProvider).unarchive(widget.id), 'Loan unarchived');
                 }
+                if (v == 'correct') {
+                  await _openCorrect(l);
+                }
               },
               itemBuilder: (_) => [
+                if (isAdmin && correctionEnabled && (l['status'] == 'ACTIVE' || l['status'] == 'CLOSED'))
+                  const PopupMenuItem(value: 'correct', child: Text('Correct Terms')),
                 if (isMgr && l['status'] == 'APPROVED') const PopupMenuItem(value: 'disburse', child: Text('Disburse')),
                 if (isMgr && (l['status'] == 'PENDING' || l['status'] == 'APPROVED')) const PopupMenuItem(value: 'reject', child: Text('Reject')),
                 if (isMgr && l['status'] == 'ACTIVE') const PopupMenuItem(value: 'close', child: Text('Close Loan')),
@@ -104,7 +111,7 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
         error: (e, _) => ErrorView(message: e.toString(), onRetry: () => ref.invalidate(loanDetailProvider(widget.id))),
         data: (l) => TabBarView(
           controller: _tabs,
-          children: [_infoTab(l), _emiTab()],
+          children: [_infoTab(l), _emiTab(), _collectionsTab(l)],
         ),
       ),
     );
@@ -428,6 +435,74 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
     );
   }
 
+  // Opens the structural-correction sheet (mirrors the web "Correct Loan Terms"
+  // modal). On success the loan + EMI schedule are refetched.
+  Future<void> _openCorrect(Map<String, dynamic> l) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _CorrectTermsSheet(loanId: widget.id, loan: l),
+    );
+    if (saved == true) {
+      ref.invalidate(loanDetailProvider(widget.id));
+      ref.invalidate(loanEmiProvider(widget.id));
+    }
+  }
+
+  // Recent collection history for this loan. The list is already included on the
+  // loan detail payload (GET /loans/:id → collections, latest 20, non-rejected).
+  Widget _collectionsTab(Map<String, dynamic> l) {
+    final cols = (l['collections'] is List) ? List<dynamic>.from(l['collections'] as List) : const <dynamic>[];
+    if (cols.isEmpty) {
+      return const EmptyView(message: 'No collections yet', icon: Icons.receipt_long_outlined);
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: cols.length,
+      itemBuilder: (ctx, i) {
+        final cm = Map<String, dynamic>.from(cols[i] as Map);
+        final vs = cm['verificationStatus']?.toString() ?? 'PENDING';
+        final collectedBy = Map<String, dynamic>.from(cm['collectedBy'] ?? {});
+        final mode = cm['paymentMode']?.toString();
+        final receipt = cm['receiptNumber']?.toString();
+        final emiNo = cm['emiNumber'];
+        final meta = <String>[
+          formatDate(cm['collectedAt']),
+          if (mode != null && mode.isNotEmpty) mode,
+          if ((collectedBy['name']?.toString() ?? '').isNotEmpty) 'by ${collectedBy['name']}',
+        ];
+        final hasReceipt = receipt != null && receipt.isNotEmpty;
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: statusColor(vs).withValues(alpha: 0.15),
+              child: Icon(Icons.payments_outlined, color: statusColor(vs), size: 20),
+            ),
+            title: Text(formatCurrency(cm['amount']), style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text(
+              [if (hasReceipt) 'Receipt $receipt', meta.join(' • ')].join('\n'),
+              style: const TextStyle(fontSize: 12),
+            ),
+            isThreeLine: hasReceipt,
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                StatusChip(label: vs, color: statusColor(vs)),
+                if (emiNo != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('EMI #$emiNo', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _emiTab() {
     final emis = ref.watch(loanEmiProvider(widget.id));
     return emis.when(
@@ -463,6 +538,307 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
           },
         );
       },
+    );
+  }
+}
+
+// Weekday options for DAILY/WEEKLY collection-day pickers (JS weekday numbers, 0=Sun).
+const _weekDays = [
+  {'v': 1, 'l': 'Mon'},
+  {'v': 2, 'l': 'Tue'},
+  {'v': 3, 'l': 'Wed'},
+  {'v': 4, 'l': 'Thu'},
+  {'v': 5, 'l': 'Fri'},
+  {'v': 6, 'l': 'Sat'},
+  {'v': 0, 'l': 'Sun'},
+];
+
+/// Structural-correction form shown for ACTIVE/CLOSED loans (ORG_ADMIN + the
+/// `enableLoanCorrection` feature). Mirrors the web "Correct Loan Terms" modal:
+/// type, amount, rate, tenure, start date, processing fee, and collection days
+/// for DAILY/WEEKLY, plus a mandatory reason saved to the loan's notes.
+class _CorrectTermsSheet extends ConsumerStatefulWidget {
+  final String loanId;
+  final Map<String, dynamic> loan;
+  const _CorrectTermsSheet({required this.loanId, required this.loan});
+  @override
+  ConsumerState<_CorrectTermsSheet> createState() => _CorrectTermsSheetState();
+}
+
+class _CorrectTermsSheetState extends ConsumerState<_CorrectTermsSheet> {
+  late String _loanType;
+  late String _tenureType;
+  late DateTime _startDate;
+  late List<int> _collectionDays;
+  final _principal = TextEditingController();
+  final _rate = TextEditingController();
+  final _tenure = TextEditingController();
+  final _fee = TextEditingController();
+  final _reason = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final l = widget.loan;
+    _loanType = l['loanType']?.toString() ?? 'PERSONAL';
+    _tenureType = l['tenureType']?.toString() ?? 'MONTHS';
+    _startDate = DateTime.tryParse(l['startDate']?.toString() ?? '') ?? DateTime.now();
+    final days = (l['collectionDays'] is List)
+        ? (l['collectionDays'] as List).map((e) => toNum(e).toInt()).toList()
+        : <int>[];
+    _collectionDays = _seedDays(_loanType, days);
+    _principal.text = _numText(l['principalAmount']);
+    _rate.text = _numText(l['interestRate']);
+    _tenure.text = _numText(l['tenure']);
+    _fee.text = _numText(l['processingFee']);
+  }
+
+  // Mirrors web openCorrect: DAILY defaults to the six working days, WEEKLY to one.
+  List<int> _seedDays(String type, List<int> days) {
+    if (type == 'DAILY' && days.isEmpty) return [1, 2, 3, 4, 5, 6];
+    if (type == 'WEEKLY' && days.length != 1) return [1];
+    return List<int>.from(days);
+  }
+
+  String _numText(dynamic v) {
+    if (v == null) return '';
+    final n = toNum(v).toDouble();
+    if (n == n.roundToDouble()) return n.toInt().toString();
+    return n.toString();
+  }
+
+  @override
+  void dispose() {
+    _principal.dispose();
+    _rate.dispose();
+    _tenure.dispose();
+    _fee.dispose();
+    _reason.dispose();
+    super.dispose();
+  }
+
+  bool get _isInstallment => _loanType == 'DAILY' || _loanType == 'WEEKLY';
+
+  void _onTypeChange(String? v) {
+    if (v == null) return;
+    setState(() {
+      _loanType = v;
+      _collectionDays = _seedDays(v, _collectionDays);
+    });
+  }
+
+  Future<void> _submit() async {
+    final reason = _reason.text.trim();
+    if (reason.length < 5) {
+      return showToast('Enter a reason (at least 5 characters)', error: true);
+    }
+    setState(() => _saving = true);
+    try {
+      final body = <String, dynamic>{
+        'reason': reason,
+        'loanType': _loanType,
+        if (_principal.text.trim().isNotEmpty) 'principalAmount': double.tryParse(_principal.text.trim()),
+        if (_rate.text.trim().isNotEmpty) 'interestRate': double.tryParse(_rate.text.trim()),
+        if (_tenure.text.trim().isNotEmpty) 'tenure': int.tryParse(_tenure.text.trim()),
+        if (!_isInstallment) 'tenureType': _tenureType,
+        'startDate': formatInputDate(_startDate),
+        if (_fee.text.trim().isNotEmpty) 'processingFee': double.tryParse(_fee.text.trim()),
+        // Collection days only apply to DAILY/WEEKLY; null clears them for other types.
+        'collectionDays': _isInstallment ? _collectionDays : null,
+      };
+      await ref.read(loanRepoProvider).correct(widget.loanId, body);
+      if (!mounted) return;
+      showToast('Loan corrected — schedule rebuilt and payments re-applied');
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      showToast(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.9,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (_, ctrl) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: ListView(
+          controller: ctrl,
+          padding: const EdgeInsets.all(16),
+          children: [
+            Row(
+              children: [
+                const Expanded(child: Text('Correct Loan Terms', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
+                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+              ],
+            ),
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+              ),
+              child: const Text(
+                'This rebuilds the EMI schedule from the corrected terms and re-applies the payments already recorded. Use only to fix a booking mistake (e.g. wrong tenure).',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+            DropdownButtonFormField<String>(
+              initialValue: _loanType,
+              decoration: const InputDecoration(labelText: 'Loan Type'),
+              items: const [
+                DropdownMenuItem(value: 'PERSONAL', child: Text('Personal')),
+                DropdownMenuItem(value: 'GOLD', child: Text('Gold')),
+                DropdownMenuItem(value: 'VEHICLE', child: Text('Vehicle')),
+                DropdownMenuItem(value: 'PROPERTY', child: Text('Property/Mortgage')),
+                DropdownMenuItem(value: 'BUSINESS', child: Text('Business')),
+                DropdownMenuItem(value: 'AGRICULTURE', child: Text('Agriculture')),
+                DropdownMenuItem(value: 'EDUCATION', child: Text('Education')),
+                DropdownMenuItem(value: 'DAILY', child: Text('Daily')),
+                DropdownMenuItem(value: 'WEEKLY', child: Text('Weekly')),
+              ],
+              onChanged: _onTypeChange,
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _principal,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Loan Amount', prefixText: '₹ '),
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _rate,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Interest Rate (%)'),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _tenure,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(labelText: _isInstallment ? 'No. of Installments' : 'Tenure'),
+                  ),
+                ),
+                if (!_isInstallment) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _tenureType,
+                      decoration: const InputDecoration(labelText: 'Unit'),
+                      items: const [
+                        DropdownMenuItem(value: 'DAYS', child: Text('Days')),
+                        DropdownMenuItem(value: 'WEEKS', child: Text('Weeks')),
+                        DropdownMenuItem(value: 'MONTHS', child: Text('Months')),
+                        DropdownMenuItem(value: 'YEARS', child: Text('Years')),
+                      ],
+                      onChanged: (v) => setState(() => _tenureType = v ?? 'MONTHS'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 4),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('Start Date: ${formatDate(_startDate)}'),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final d = await showDatePicker(
+                  context: context,
+                  firstDate: DateTime(2015),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                  initialDate: _startDate,
+                );
+                if (d != null) setState(() => _startDate = d);
+              },
+            ),
+            TextFormField(
+              controller: _fee,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Processing Fee', prefixText: '₹ '),
+            ),
+            if (_loanType == 'DAILY') ...[
+              const SizedBox(height: 14),
+              const Text('Collection Days', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _weekDays.map((d) {
+                  final v = d['v'] as int;
+                  return FilterChip(
+                    label: Text(d['l'] as String),
+                    selected: _collectionDays.contains(v),
+                    onSelected: (on) => setState(() {
+                      if (on) {
+                        _collectionDays = ([..._collectionDays, v]..sort());
+                      } else {
+                        _collectionDays = _collectionDays.where((x) => x != v).toList();
+                      }
+                    }),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${_collectionDays.isEmpty ? 7 : _collectionDays.length} day(s)/week — EMIs are scheduled only on these days',
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ],
+            if (_loanType == 'WEEKLY') ...[
+              const SizedBox(height: 14),
+              const Text('Collection Day (one per week)', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _weekDays.map((d) {
+                  final v = d['v'] as int;
+                  return ChoiceChip(
+                    label: Text(d['l'] as String),
+                    selected: _collectionDays.isNotEmpty && _collectionDays.first == v,
+                    onSelected: (_) => setState(() => _collectionDays = [v]),
+                  );
+                }).toList(),
+              ),
+            ],
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _reason,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Reason for correction *',
+                hintText: 'e.g. Tenure entered as 14 by mistake, should be 100',
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              "The reason is saved to the loan's notes as an audit trail. Only verified collections are re-applied — verify any pending payment first.",
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _saving ? null : _submit,
+                child: _saving
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Apply Correction'),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
     );
   }
 }
