@@ -246,7 +246,7 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
                 KeyValueRow(label: 'Processing Fee', value: formatCurrency(l['processingFee'])),
               KeyValueRow(label: 'Start Date', value: formatDate(l['startDate'])),
               KeyValueRow(label: 'Disbursed', value: formatDate(l['disbursedDate'])),
-              KeyValueRow(label: 'Maturity', value: formatDate(l['maturityDate'])),
+              KeyValueRow(label: 'End Date', value: formatDate(l['endDate'])),
               if (l['disbursedDate'] != null)
                 KeyValueRow(
                   label: 'Day',

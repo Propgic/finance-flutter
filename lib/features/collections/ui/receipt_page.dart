@@ -52,14 +52,33 @@ class _ReceiptPageState extends ConsumerState<ReceiptPage> {
       ),
     );
     if (saved != true) return;
-    final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
-    if (amount <= 0) return showToast('Enter a valid amount', error: true);
+    final raw = amountCtrl.text.trim();
+    if (raw.isEmpty) return showToast('Enter an amount', error: true);
+    final amount = double.tryParse(raw);
+    if (amount == null || amount < 0) return showToast('Enter a valid amount', error: true);
+    // Amount 0 removes the collection entirely — confirm before the destructive action.
+    if (amount == 0) {
+      if (!mounted) return;
+      final ok = await confirmDialog(
+        context,
+        title: 'Remove collection?',
+        message: 'Setting the amount to 0 will remove this collection.',
+        confirmText: 'Remove',
+        destructive: true,
+      );
+      if (!ok) return;
+    }
     try {
-      await ref.read(collectionRepoProvider).update(
+      final result = await ref.read(collectionRepoProvider).update(
             widget.id,
             amount: amount,
             notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
           );
+      if (result['deleted'] == true) {
+        showToast('Collection removed');
+        if (mounted) Navigator.of(context).pop();
+        return;
+      }
       showToast('Collection amount updated');
       if (mounted) setState(() => _future = ref.read(collectionRepoProvider).getReceipt(widget.id));
     } on ApiException catch (e) {
