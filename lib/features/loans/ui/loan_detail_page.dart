@@ -225,7 +225,36 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
           ],
           child: Column(
             children: [
-              KeyValueRow(label: 'Name', value: '${c['firstName'] ?? ''} ${c['lastName'] ?? ''}'.trim()),
+              Row(
+                children: [
+                  () {
+                    final photo = c['photo']?.toString();
+                    final name = '${c['firstName'] ?? ''} ${c['lastName'] ?? ''}'.trim();
+                    final avatar = Avatar(url: photo, name: name, size: 56);
+                    return (photo != null && photo.isNotEmpty)
+                        ? GestureDetector(onTap: () => showImageViewer(context, photo), child: avatar)
+                        : avatar;
+                  }(),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${c['firstName'] ?? ''} ${c['lastName'] ?? ''}'.trim().isEmpty
+                              ? '-'
+                              : '${c['firstName'] ?? ''} ${c['lastName'] ?? ''}'.trim(),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        if ((c['customerId']?.toString() ?? '').isNotEmpty)
+                          Text(c['customerId'].toString(),
+                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
               KeyValueRow(label: 'Phone', value: c['phone']?.toString() ?? '-',
                   onTap: c['phone'] != null ? () => launchUrl(Uri.parse('tel:${c['phone']}')) : null),
             ],
