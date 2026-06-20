@@ -21,6 +21,8 @@ class _LoanGroupFormPageState extends ConsumerState<LoanGroupFormPage> {
   final _meetingDay = TextEditingController();
   final _meetingTime = TextEditingController();
   final _meetingPlace = TextEditingController();
+  final _memberCount = TextEditingController();
+  final _cycle = TextEditingController();
   bool _saving = false;
   bool _loading = false;
 
@@ -41,6 +43,8 @@ class _LoanGroupFormPageState extends ConsumerState<LoanGroupFormPage> {
       _meetingDay.text = g['meetingDay']?.toString() ?? '';
       _meetingTime.text = g['meetingTime']?.toString() ?? '';
       _meetingPlace.text = g['meetingPlace']?.toString() ?? '';
+      _memberCount.text = g['memberCount']?.toString() ?? '';
+      _cycle.text = g['cycle']?.toString() ?? '';
     } catch (e) {
       showToast('Load failed: $e', error: true);
     } finally {
@@ -60,6 +64,8 @@ class _LoanGroupFormPageState extends ConsumerState<LoanGroupFormPage> {
         if (_meetingDay.text.trim().isNotEmpty) 'meetingDay': _meetingDay.text.trim(),
         if (_meetingTime.text.trim().isNotEmpty) 'meetingTime': _meetingTime.text.trim(),
         if (_meetingPlace.text.trim().isNotEmpty) 'meetingPlace': _meetingPlace.text.trim(),
+        if (_memberCount.text.trim().isNotEmpty) 'memberCount': int.tryParse(_memberCount.text.trim()),
+        if (_cycle.text.trim().isNotEmpty) 'cycle': _cycle.text.trim(),
       };
       final repo = ref.read(loanGroupRepoProvider);
       if (widget.id == null) {
@@ -98,6 +104,10 @@ class _LoanGroupFormPageState extends ConsumerState<LoanGroupFormPage> {
                   TextFormField(controller: _leaderName, decoration: const InputDecoration(labelText: 'Leader Name')),
                   const SizedBox(height: 10),
                   TextFormField(controller: _leaderPhone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Leader Phone')),
+                  const SizedBox(height: 10),
+                  TextFormField(controller: _memberCount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Number of Members')),
+                  const SizedBox(height: 10),
+                  TextFormField(controller: _cycle, decoration: const InputDecoration(labelText: 'Cycle')),
                 ],
               ),
             ),

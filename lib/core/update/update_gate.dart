@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../auth/auth_controller.dart';
 import 'update_service.dart';
 
 /// Wraps the whole app (via [MaterialApp.router]'s `builder`) and enforces the
@@ -37,6 +38,12 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ref.invalidate(updateCheckProvider);
+      // Re-pull /auth/me on resume so role / permission / feature changes made
+      // elsewhere (e.g. an admin granting 'loans.assign' or toggling a feature
+      // on web) take effect after a simple app switch, not only on a cold start.
+      if (ref.read(authProvider).isAuthed) {
+        ref.read(authProvider.notifier).refreshMe();
+      }
     }
   }
 

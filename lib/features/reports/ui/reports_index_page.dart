@@ -26,6 +26,9 @@ class ReportsIndexPage extends ConsumerWidget {
       _ReportItem('Customer Report', Icons.people_outline, '/reports/customer', 'reports.customer'),
       if (org?.feature('enableExpenses') == true)
         _ReportItem('Expense Report', Icons.receipt_long_outlined, '/reports/expenses', 'reports.expenses'),
+      _ReportItem('Progress Report', Icons.insights_outlined, '/reports/progress', 'reports.progress'),
+      if (org?.feature('enableGroupLoan') == true)
+        _ReportItem('Group Collection Report', Icons.groups_outlined, '/reports/group-collection', 'reports.group_collection'),
     ];
     final visible = items.where((i) => auth.hasPermission(i.permission)).toList();
     return Scaffold(

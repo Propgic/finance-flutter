@@ -239,7 +239,7 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
                 children: [
                   _text('firstName', 'First Name', required: true),
                   _text('lastName', 'Last Name'),
-                  _text('fatherName', 'Father Name', required: true),
+                  _text('fatherName', 'Father Name'),
                   DropdownButtonFormField<String>(
                     initialValue: _gender,
                     decoration: const InputDecoration(labelText: 'Gender *'),
@@ -276,9 +276,9 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
                     return null;
                   }),
                   _text('email', 'Email', keyboard: TextInputType.emailAddress),
-                  _text('aadhaarNumber', 'Aadhaar', required: true, keyboard: TextInputType.number, validator: (v) {
-                    if (v == null || v.isEmpty) return 'Required';
-                    if (!RegExp(r'^\d{12}$').hasMatch(v)) return 'Must be 12 digits';
+                  _text('aadhaarNumber', 'Aadhaar', keyboard: TextInputType.number, validator: (v) {
+                    if (v == null || v.trim().isEmpty) return null;
+                    if (!RegExp(r'^\d{12}$').hasMatch(v.trim())) return 'Must be 12 digits';
                     return null;
                   }),
                   _text('panNumber', 'PAN (optional)', textCapitalization: TextCapitalization.characters, validator: (v) {
@@ -294,7 +294,7 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
               title: 'Address',
               child: Column(
                 children: [
-                  _text('address', 'Address', required: true, maxLines: 2),
+                  _text('address', 'Address', maxLines: 2),
                   _text('city', 'City', required: true),
                   _text('district', 'District', required: true),
                   _text('state', 'State', required: true),

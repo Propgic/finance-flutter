@@ -196,6 +196,7 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
   void _openAdvancedFilters() {
     final auth = ref.read(authProvider);
     final canFilterAssignee = auth.hasRole('ORG_ADMIN') || auth.hasRole('MANAGER');
+    final isFieldOfficer = auth.hasRole('FIELD_OFFICER');
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -203,80 +204,133 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
       builder: (ctx) {
         String? tempStatus = _statusFilter;
         String? tempAssignee = _assigneeFilter;
+        DateTime? tempFrom = _fromDate != null ? DateTime.tryParse(_fromDate!) : null;
+        DateTime? tempTo = _toDate != null ? DateTime.tryParse(_toDate!) : null;
         return StatefulBuilder(
-          builder: (ctx, setSheetState) => Padding(
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 4,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text('Filters', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 12),
-                if (_statusTab == 'ALL')
-                  DropdownButtonFormField<String?>(
-                    initialValue: tempStatus,
-                    decoration: const InputDecoration(labelText: 'Status'),
-                    items: [
-                      const DropdownMenuItem<String?>(value: null, child: Text('All Statuses')),
-                      ..._statusDropdownOptions.map(
-                        (s) => DropdownMenuItem<String?>(value: s, child: Text(s)),
+          builder: (ctx, setSheetState) {
+            Future<void> pickDate(bool isFrom) async {
+              final picked = await showDatePicker(
+                context: ctx,
+                initialDate: (isFrom ? tempFrom : tempTo) ?? DateTime.now(),
+                firstDate: DateTime(2000),
+                lastDate: DateTime(DateTime.now().year + 5),
+              );
+              if (picked != null) {
+                setSheetState(() {
+                  if (isFrom) {
+                    tempFrom = picked;
+                  } else {
+                    tempTo = picked;
+                  }
+                });
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 4,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Filters', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 12),
+                  if (_statusTab == 'ALL') ...[
+                    DropdownButtonFormField<String?>(
+                      initialValue: tempStatus,
+                      decoration: const InputDecoration(labelText: 'Status'),
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('All Statuses')),
+                        // Field officers never see closed loans, so don't offer CLOSED.
+                        ..._statusDropdownOptions
+                            .where((s) => !(isFieldOfficer && s == 'CLOSED'))
+                            .map((s) => DropdownMenuItem<String?>(value: s, child: Text(s))),
+                      ],
+                      onChanged: (v) => setSheetState(() => tempStatus = v),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (canFilterAssignee) ...[
+                    DropdownButtonFormField<String?>(
+                      initialValue: tempAssignee,
+                      decoration: const InputDecoration(labelText: 'Assignee'),
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('All Assignees')),
+                        ..._assignees.map((a) => DropdownMenuItem<String?>(
+                              value: a['id']?.toString(),
+                              child: Text(a['name']?.toString() ?? ''),
+                            )),
+                      ],
+                      onChanged: (v) => setSheetState(() => tempAssignee = v),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  // Date range — available to every role (mirrors the web From/To inputs).
+                  // On the Closed tab the backend filters this range by closed date;
+                  // everywhere else by disbursement date, so label it to match.
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _SheetDateField(
+                          label: _statusTab == 'CLOSED' ? 'Closed From' : 'From',
+                          value: tempFrom,
+                          onTap: () => pickDate(true),
+                          onClear: tempFrom == null ? null : () => setSheetState(() => tempFrom = null),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _SheetDateField(
+                          label: _statusTab == 'CLOSED' ? 'Closed To' : 'To',
+                          value: tempTo,
+                          onTap: () => pickDate(false),
+                          onClear: tempTo == null ? null : () => setSheetState(() => tempTo = null),
+                        ),
                       ),
                     ],
-                    onChanged: (v) => setSheetState(() => tempStatus = v),
                   ),
-                if (canFilterAssignee) ...[
-                  if (_statusTab == 'ALL') const SizedBox(height: 12),
-                  DropdownButtonFormField<String?>(
-                    initialValue: tempAssignee,
-                    decoration: const InputDecoration(labelText: 'Assignee'),
-                    items: [
-                      const DropdownMenuItem<String?>(value: null, child: Text('All Assignees')),
-                      ..._assignees.map((a) => DropdownMenuItem<String?>(
-                            value: a['id']?.toString(),
-                            child: Text(a['name']?.toString() ?? ''),
-                          )),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            setSheetState(() {
+                              tempStatus = null;
+                              tempAssignee = null;
+                              tempFrom = null;
+                              tempTo = null;
+                            });
+                          },
+                          child: const Text('Clear'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            setState(() {
+                              _statusFilter = tempStatus;
+                              _assigneeFilter = tempAssignee;
+                              _fromDate = tempFrom != null ? formatInputDate(tempFrom!) : null;
+                              _toDate = tempTo != null ? formatInputDate(tempTo!) : null;
+                            });
+                            _load(reset: true);
+                          },
+                          child: const Text('Apply'),
+                        ),
+                      ),
                     ],
-                    onChanged: (v) => setSheetState(() => tempAssignee = v),
                   ),
                 ],
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          setSheetState(() {
-                            tempStatus = null;
-                            tempAssignee = null;
-                          });
-                        },
-                        child: const Text('Clear'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          setState(() {
-                            _statusFilter = tempStatus;
-                            _assigneeFilter = tempAssignee;
-                          });
-                          _load(reset: true);
-                        },
-                        child: const Text('Apply'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -286,14 +340,25 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
     final canCreate = auth.hasPermission('loans.create');
-    final canFilterAssignee = auth.hasRole('ORG_ADMIN') || auth.hasRole('MANAGER');
+    final isFieldOfficer = auth.hasRole('FIELD_OFFICER');
     final features = auth.org?.features ?? const {};
     final typeTabs = _loanTypeLabels.entries
         .where((e) => !_loanTypeFeatureMap.containsKey(e.key) || features[_loanTypeFeatureMap[e.key]] == true)
         .toList();
-    final activeFilterCount =
-        (_statusTab == 'ALL' && _statusFilter != null ? 1 : 0) + (_assigneeFilter != null ? 1 : 0);
-    final showFilterIcon = canFilterAssignee || _statusTab == 'ALL';
+    // Field officers don't see closed loans (backend hides CLOSED/SETTLED), so the
+    // Closed pill would always be empty for them.
+    final statusPills = <List<String>>[
+      ['ACTIVE', 'Active'],
+      if (!isFieldOfficer) ['CLOSED', 'Closed'],
+      ['ARCHIVED', 'Archived'],
+      ['ALL', 'All'],
+    ];
+    final activeFilterCount = (_statusTab == 'ALL' && _statusFilter != null ? 1 : 0) +
+        (_assigneeFilter != null ? 1 : 0) +
+        (_fromDate != null ? 1 : 0) +
+        (_toDate != null ? 1 : 0);
+    // Date range is filterable for everyone, so the filter affordance is always shown.
+    const showFilterIcon = true;
 
     return Scaffold(
       drawer: const AppDrawer(),
@@ -394,12 +459,7 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
             child: Row(
               children: [
-                for (final pill in const [
-                  ['ACTIVE', 'Active'],
-                  ['CLOSED', 'Closed'],
-                  ['ARCHIVED', 'Archived'],
-                  ['ALL', 'All'],
-                ]) ...[
+                for (final pill in statusPills) ...[
                   Expanded(
                     child: _StatusPill(
                       label: pill[1],
@@ -453,6 +513,8 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
                                         style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                                     Text('Balance: ${formatCurrency(l['balance'])}',
                                         style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                    Text('Total Paid: ${formatCurrency(l['totalPaid'])}',
+                                        style: const TextStyle(fontSize: 12, color: AppColors.accent, fontWeight: FontWeight.w600)),
                                     if (timeline.isNotEmpty)
                                       Text(timeline,
                                           style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
@@ -462,7 +524,13 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
                                       if (toNum(l['pendingCollections']) > 0)
                                         Text('⏳ ${formatCurrency(l['pendingCollections'])} pending verification',
                                             style: const TextStyle(fontSize: 10, color: AppColors.warning)),
-                                    ] else if (l['status'] == 'ACTIVE' && toNum(l['excessAmount']) > 0)
+                                    ] else if (l['status'] == 'ACTIVE' && toNum(l['dueTodayAmount']) > 0)
+                                      // No overdue flagged, but money is still owed up to today
+                                      // (e.g. a partially paid current/last EMI) — mirrors the
+                                      // web list's "Due Today" column so it isn't hidden.
+                                      Text('Due Today: ${formatCurrency(l['dueTodayAmount'])}',
+                                          style: const TextStyle(fontSize: 11, color: AppColors.warning, fontWeight: FontWeight.w600))
+                                    else if (l['status'] == 'ACTIVE' && toNum(l['excessAmount']) > 0)
                                       Text('+${formatCurrency(l['excessAmount'])} advance',
                                           style: const TextStyle(fontSize: 11, color: AppColors.accent, fontWeight: FontWeight.w600)),
                                   ],
@@ -483,6 +551,40 @@ class _LoanListPageState extends ConsumerState<LoanListPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Tappable date field for the filter sheet; shows the picked date (or "Any") and
+/// a clear button once a date is set.
+class _SheetDateField extends StatelessWidget {
+  final String label;
+  final DateTime? value;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
+  const _SheetDateField({required this.label, required this.value, required this.onTap, this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          suffixIcon: value != null && onClear != null
+              ? IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: onClear)
+              : const Icon(Icons.calendar_today, size: 18),
+        ),
+        child: Text(
+          value != null ? formatDate(value) : 'Any',
+          style: TextStyle(
+            fontSize: 14,
+            color: value != null ? AppColors.textPrimary : AppColors.textSecondary,
+          ),
+        ),
       ),
     );
   }

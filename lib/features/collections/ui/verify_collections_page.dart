@@ -29,7 +29,9 @@ const _paymentModeLabels = {
 };
 
 class VerifyCollectionsPage extends ConsumerStatefulWidget {
-  const VerifyCollectionsPage({super.key});
+  const VerifyCollectionsPage({super.key, this.collectedById, this.collectorName});
+  final String? collectedById;
+  final String? collectorName;
   @override
   ConsumerState<VerifyCollectionsPage> createState() => _VerifyCollectionsPageState();
 }
@@ -47,7 +49,9 @@ class _VerifyCollectionsPageState extends ConsumerState<VerifyCollectionsPage> {
     setState(() { _loading = true; _error = null; });
     try {
       final api = ref.read(apiClientProvider);
-      final res = await api.raw(() => api.dio.get('/collections/pending-verification', queryParameters: {'limit': 200}));
+      final q = <String, dynamic>{'limit': 200};
+      if (widget.collectedById?.isNotEmpty ?? false) q['collectedById'] = widget.collectedById;
+      final res = await api.raw(() => api.dio.get('/collections/pending-verification', queryParameters: q));
       final body = res.data;
       final data = body is Map && body['data'] is List ? body['data'] as List : const [];
       if (body is Map && body['summary'] != null) {
@@ -71,7 +75,7 @@ class _VerifyCollectionsPageState extends ConsumerState<VerifyCollectionsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Verify Collections')),
+      appBar: AppBar(title: Text((widget.collectorName?.isNotEmpty ?? false) ? 'Verify — ${widget.collectorName}' : 'Verify Collections')),
       body: _loading
           ? const LoadingView()
           : _error != null

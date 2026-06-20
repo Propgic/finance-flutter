@@ -55,12 +55,17 @@ class _LoanGroupListPageState extends ConsumerState<LoanGroupListPage> {
               itemBuilder: (ctx, i) {
                 final g = Map<String, dynamic>.from(items[i] as Map);
                 final counts = Map<String, dynamic>.from(g['_count'] ?? {});
+                final subtitleParts = <String>[
+                  if ((g['leaderName']?.toString() ?? '').isNotEmpty) g['leaderName'].toString(),
+                  if (g['memberCount'] != null) '${g['memberCount']} members',
+                  if ((g['cycle']?.toString() ?? '').isNotEmpty) 'Cycle: ${g['cycle']}',
+                ];
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   child: ListTile(
                     onTap: () => context.push('/loan-groups/${g['id']}'),
                     title: Text(g['name']?.toString() ?? '-'),
-                    subtitle: Text(g['leaderName']?.toString() ?? ''),
+                    subtitle: Text(subtitleParts.join(' • ')),
                     trailing: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,

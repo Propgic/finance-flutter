@@ -15,10 +15,6 @@ final loanDetailProvider = FutureProvider.autoDispose.family<Map<String, dynamic
   return ref.read(loanRepoProvider).get(id);
 });
 
-final loanEmiProvider = FutureProvider.autoDispose.family<List<dynamic>, String>((ref, id) async {
-  return ref.read(loanRepoProvider).emiSchedule(id);
-});
-
 class LoanDetailPage extends ConsumerStatefulWidget {
   final String id;
   const LoanDetailPage({super.key, required this.id});
@@ -111,7 +107,7 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
         error: (e, _) => ErrorView(message: e.toString(), onRetry: () => ref.invalidate(loanDetailProvider(widget.id))),
         data: (l) => TabBarView(
           controller: _tabs,
-          children: [_infoTab(l), _collectionsTab(l), _emiTab()],
+          children: [_infoTab(l), _collectionsTab(l), _emiTab(l)],
         ),
       ),
     );
@@ -124,14 +120,16 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
     // Payment overview: group Overdue, Due Amount and Total Due Payable together so the
     // amount the customer must pay now is never confused with individual figures.
     final nextEmi = Map<String, dynamic>.from(l['nextEMI'] ?? {});
-    final dueAmount = nextEmi.isEmpty
-        ? 0
-        : toNum(nextEmi['emiAmount']) + toNum(nextEmi['lateFee']) - toNum(nextEmi['paidAmount']);
+    // Use the backend's authoritative figures (already net of partial payments and
+    // applying the PENDING/PARTIALLY_PAID/overdue conventions) instead of re-deriving
+    // from nextEMI — matches the web detail and fixes the edge case where a partially
+    // paid (e.g. final) EMI's remaining amount wouldn't surface from nextEMI alone.
+    final dueAmount = toNum(l['dueAmount']);
     final overdueEmis = toNum(l['overdueEMIs']);
     final showOverdue = overdueEmis > 0;
     final showDue = l['status'] == 'ACTIVE' && dueAmount > 0;
     // Total Due Payable = currently due EMI + overdue amount (what's payable right now).
-    final totalDuePayable = (showDue ? dueAmount : 0) + toNum(l['overdueAmount']);
+    final totalDuePayable = toNum(l['totalDuePayable']);
 
     final overviewCards = <Widget>[];
     if (showOverdue) {
@@ -201,6 +199,7 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
             ),
           ),
         ),
+        _pendingBanner(l),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           child: IntrinsicHeight(
@@ -215,6 +214,7 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
             ),
           ),
         ),
+        _breakdownCard(l),
         SectionCard(
           title: 'Customer',
           actions: [
@@ -257,6 +257,30 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
               const SizedBox(height: 8),
               KeyValueRow(label: 'Phone', value: c['phone']?.toString() ?? '-',
                   onTap: c['phone'] != null ? () => launchUrl(Uri.parse('tel:${c['phone']}')) : null),
+              if ((c['alternatePhone']?.toString() ?? '').isNotEmpty)
+                KeyValueRow(label: 'Alternate Phone', value: c['alternatePhone'].toString(),
+                    onTap: () => launchUrl(Uri.parse('tel:${c['alternatePhone']}'))),
+              if ((c['introducerName']?.toString() ?? '').isNotEmpty)
+                KeyValueRow(
+                  label: 'Introducer',
+                  value: c['introducerName'].toString(),
+                  trailing: (c['introducerPhoto']?.toString().isNotEmpty ?? false)
+                      ? GestureDetector(
+                          onTap: () => showImageViewer(context, c['introducerPhoto'].toString()),
+                          child: Avatar(url: c['introducerPhoto'].toString(), name: c['introducerName'].toString(), size: 28),
+                        )
+                      : null,
+                ),
+              if ((c['introducerPhone']?.toString() ?? '').isNotEmpty)
+                KeyValueRow(label: 'Introducer Phone', value: c['introducerPhone'].toString(),
+                    onTap: () => launchUrl(Uri.parse('tel:${c['introducerPhone']}'))),
+              if ((c['verifiedBy']?.toString() ?? '').isNotEmpty)
+                KeyValueRow(label: 'Verified By', value: c['verifiedBy'].toString()),
+              KeyValueRow(
+                label: 'Total Loans',
+                value: '${toNum(c['loansCount']).toInt()}',
+                onTap: c['id'] != null ? () => context.push('/customers/${c['id']}') : null,
+              ),
             ],
           ),
         ),
@@ -266,9 +290,9 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
             children: [
               KeyValueRow(label: 'Principal', value: formatCurrency(l['principalAmount'])),
               if (!loanFieldHidden(l, 'interestRate'))
-                KeyValueRow(label: 'Interest Rate', value: '${l['interestRate'] ?? '-'}%'),
+                KeyValueRow(label: 'Interest Rate', value: _interestRateLabel(l)),
               KeyValueRow(label: 'Tenure', value: '${l['tenure'] ?? ''} ${l['tenureType'] ?? ''}'),
-              KeyValueRow(label: 'EMI', value: formatCurrency(l['emiAmount'])),
+              KeyValueRow(label: l['loanType'] == 'DAILY' ? 'Daily Installment' : 'EMI', value: formatCurrency(l['emiAmount'])),
               if (!loanFieldHidden(l, 'totalPayable'))
                 KeyValueRow(label: 'Total Payable', value: formatCurrency(l['totalPayable'])),
               if (!loanFieldHidden(l, 'processingFee'))
@@ -301,9 +325,12 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
             children: [
               KeyValueRow(label: 'Paid', value: formatCurrency(l['totalPaid']), valueColor: AppColors.accent),
               KeyValueRow(label: 'Outstanding', value: formatCurrency(l['outstanding']), valueColor: AppColors.danger),
+              KeyValueRow(label: 'Due', value: formatCurrency(showDue ? dueAmount : 0), valueColor: AppColors.warning),
+              KeyValueRow(label: 'Over Due', value: formatCurrency(l['overdueAmount']), valueColor: AppColors.danger),
             ],
           ),
         ),
+        _closureCard(l),
         if (assignee.isNotEmpty)
           SectionCard(
             title: 'Assigned To',
@@ -464,8 +491,152 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
     );
   }
 
+  // Interest rate label with its calculation method, mirroring the web summary card
+  // (e.g. "12% · Reducing" or "10% · Flat · upfront").
+  String _interestRateLabel(Map<String, dynamic> l) {
+    final rate = '${l['interestRate'] ?? '-'}%';
+    final type = l['interestType']?.toString();
+    if (type == null || type.isEmpty) return rate;
+    final label = type == 'FLAT' ? 'Flat' : 'Reducing';
+    final upfront = l['deductInterestUpfront'] == true ? ' · upfront' : '';
+    return '$rate · $label$upfront';
+  }
+
+  // Pending-verification notice (mirrors the web banner). When the org counts pending
+  // collections in the balance the money is already folded into the figures above, so
+  // we flag the unverified portion; otherwise we note it's awaiting verification.
+  Widget _pendingBanner(Map<String, dynamic> l) {
+    final pending = toNum(l['pendingCollections']);
+    if (pending <= 0) return const SizedBox.shrink();
+    final counted = l['pendingCounted'] == true;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.hourglass_bottom, size: 18, color: AppColors.warning),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              counted
+                  ? '${formatCurrency(pending)} collected and counted as paid — awaiting org-admin verification.'
+                  : '${formatCurrency(pending)} collected — awaiting verification (not yet counted in balances).',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Disbursement breakdown shown when interest was deducted upfront (daily/weekly
+  // loans, or flat loans with "deduct upfront"). Mirrors the web breakdown card.
+  Widget _breakdownCard(Map<String, dynamic> l) {
+    if (toNum(l['upfrontInterestAmount']) <= 0) return const SizedBox.shrink();
+    final type = l['loanType']?.toString();
+    final title = type == 'DAILY'
+        ? 'Daily Loan — Disbursement Breakdown'
+        : type == 'WEEKLY'
+            ? 'Weekly Loan — Disbursement Breakdown'
+            : 'Disbursement Breakdown — Interest Deducted Upfront';
+    final days = (l['collectionDays'] is List)
+        ? (l['collectionDays'] as List).map((e) => toNum(e).toInt()).toList()
+        : <int>[];
+    return SectionCard(
+      title: title,
+      child: Column(
+        children: [
+          KeyValueRow(label: 'Principal', value: formatCurrency(l['principalAmount'])),
+          KeyValueRow(
+            label: 'Upfront Interest',
+            value: '- ${formatCurrency(l['upfrontInterestAmount'])}',
+            valueColor: const Color(0xFFEA580C),
+          ),
+          if (!loanFieldHidden(l, 'netDisbursedAmount'))
+            KeyValueRow(label: 'Net Paid to Customer', value: formatCurrency(l['netDisbursedAmount']), valueColor: AppColors.accent),
+          if (days.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Collection Days', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            ),
+            const SizedBox(height: 6),
+            Align(alignment: Alignment.centerLeft, child: _collectionDaysRow(days)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Sun–Sat chips, highlighting the loan's collection days (JS weekday numbers, 0=Sun).
+  Widget _collectionDaysRow(List<int> days) {
+    const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (var i = 0; i < 7; i++)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: days.contains(i) ? const Color(0xFFEA580C) : const Color(0xFFFEF3C7),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              labels[i],
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: days.contains(i) ? Colors.white : const Color(0xFFD97706),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // Closure summary for closed/settled/written-off loans (mirrors the web card).
+  Widget _closureCard(Map<String, dynamic> l) {
+    final status = l['status']?.toString();
+    if (!['CLOSED', 'SETTLED', 'DEFAULTED'].contains(status) || l['closureType'] == null) {
+      return const SizedBox.shrink();
+    }
+    final ct = l['closureType']?.toString();
+    final label = ct == 'FULL_PAYMENT'
+        ? 'Fully Paid'
+        : ct == 'SETTLEMENT'
+            ? 'Settled'
+            : 'Written Off';
+    return SectionCard(
+      title: 'Loan Closure Summary — $label',
+      child: Column(
+        children: [
+          if (!loanFieldHidden(l, 'totalPayable'))
+            KeyValueRow(label: 'Total Payable', value: formatCurrency(l['totalPayable'])),
+          KeyValueRow(label: 'Total Recovered', value: formatCurrency(l['totalRecovered']), valueColor: AppColors.accent),
+          KeyValueRow(label: 'Waived', value: formatCurrency(l['waiverAmount']), valueColor: AppColors.warning),
+          KeyValueRow(label: 'Written Off (Loss)', value: formatCurrency(l['writeOffAmount']), valueColor: AppColors.danger),
+          KeyValueRow(label: 'Closed On', value: formatDate(l['closedAt'])),
+          if ((l['closureNotes']?.toString() ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Notes: ${l['closureNotes']}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // Opens the structural-correction sheet (mirrors the web "Correct Loan Terms"
-  // modal). On success the loan + EMI schedule are refetched.
+  // modal). On success the loan (which carries the EMI schedule) is refetched.
   Future<void> _openCorrect(Map<String, dynamic> l) async {
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -474,7 +645,6 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
     );
     if (saved == true) {
       ref.invalidate(loanDetailProvider(widget.id));
-      ref.invalidate(loanEmiProvider(widget.id));
     }
   }
 
@@ -504,6 +674,7 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
         return Card(
           margin: const EdgeInsets.symmetric(vertical: 4),
           child: ListTile(
+            onTap: cm['id'] != null ? () => context.push('/collections/${cm['id']}/receipt') : null,
             leading: CircleAvatar(
               backgroundColor: statusColor(vs).withValues(alpha: 0.15),
               child: Icon(Icons.payments_outlined, color: statusColor(vs), size: 20),
@@ -532,39 +703,44 @@ class _LoanDetailPageState extends ConsumerState<LoanDetailPage> with SingleTick
     );
   }
 
-  Widget _emiTab() {
-    final emis = ref.watch(loanEmiProvider(widget.id));
-    return emis.when(
-      loading: () => const LoadingView(),
-      error: (e, _) => ErrorView(message: e.toString()),
-      data: (items) {
-        if (items.isEmpty) return const EmptyView(message: 'No EMI schedule');
-        return ListView.builder(
-          itemCount: items.length,
-          itemBuilder: (ctx, i) {
-            final e = Map<String, dynamic>.from(items[i] as Map);
-            final status = e['status']?.toString() ?? '';
-            return Card(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: statusColor(status).withValues(alpha: 0.15),
-                  child: Text('${e['emiNumber']}', style: TextStyle(color: statusColor(status), fontWeight: FontWeight.bold)),
-                ),
-                title: Text(formatDate(e['dueDate'])),
-                subtitle: Text('EMI: ${formatCurrency(e['emiAmount'])}${toNum(e['lateFee']) > 0 ? ' • Late: ${formatCurrency(e['lateFee'])}' : ''}'),
-                trailing: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    StatusChip(label: status, color: statusColor(status)),
-                    if (toNum(e['paidAmount']) > 0)
-                      Text(formatCurrency(e['paidAmount']), style: const TextStyle(fontSize: 11, color: AppColors.accent)),
-                  ],
-                ),
-              ),
-            );
-          },
+  // EMI schedule reads from the loan detail payload (GET /loans/:id → emiSchedule),
+  // the same source the web detail uses — so overdue recompute and redaction match.
+  // Each row shows the principal/interest split (interest hidden alongside the loan's
+  // Total Interest), plus paid amount and status.
+  Widget _emiTab(Map<String, dynamic> l) {
+    final items = (l['emiSchedule'] is List) ? List<dynamic>.from(l['emiSchedule'] as List) : const <dynamic>[];
+    if (items.isEmpty) return const EmptyView(message: 'No EMI schedule');
+    final showInterest = !loanFieldHidden(l, 'totalInterest');
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (ctx, i) {
+        final e = Map<String, dynamic>.from(items[i] as Map);
+        final status = e['status']?.toString() ?? '';
+        final parts = <String>[
+          'EMI ${formatCurrency(e['emiAmount'])}',
+          'P ${formatCurrency(e['principalComponent'])}',
+          if (showInterest) 'I ${formatCurrency(e['interestComponent'])}',
+          if (toNum(e['lateFee']) > 0) 'Late ${formatCurrency(e['lateFee'])}',
+        ];
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: statusColor(status).withValues(alpha: 0.15),
+              child: Text('${e['emiNumber']}', style: TextStyle(color: statusColor(status), fontWeight: FontWeight.bold)),
+            ),
+            title: Text(formatDate(e['dueDate'])),
+            subtitle: Text(parts.join(' • ')),
+            trailing: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                StatusChip(label: status, color: statusColor(status)),
+                if (toNum(e['paidAmount']) > 0)
+                  Text(formatCurrency(e['paidAmount']), style: const TextStyle(fontSize: 11, color: AppColors.accent)),
+              ],
+            ),
+          ),
         );
       },
     );

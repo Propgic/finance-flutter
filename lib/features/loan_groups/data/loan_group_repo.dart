@@ -5,9 +5,10 @@ class LoanGroupRepo {
   final ApiClient api;
   LoanGroupRepo(this.api);
 
-  Future<Map<String, dynamic>> list({int page = 1, int limit = 20, String? search}) async {
+  Future<Map<String, dynamic>> list({int page = 1, int limit = 20, String? search, String? assignedTo}) async {
     final q = <String, dynamic>{'page': page, 'limit': limit};
     if (search?.isNotEmpty ?? false) q['search'] = search;
+    if (assignedTo?.isNotEmpty ?? false) q['assignedTo'] = assignedTo;
     final res = await api.raw(() => api.dio.get('/loan-groups', queryParameters: q));
     return Map<String, dynamic>.from(res.data as Map);
   }

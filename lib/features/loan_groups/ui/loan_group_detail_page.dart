@@ -65,6 +65,8 @@ class LoanGroupDetailPage extends ConsumerWidget {
                 children: [
                   KeyValueRow(label: 'Leader', value: g['leaderName']?.toString() ?? '-'),
                   KeyValueRow(label: 'Leader Phone', value: g['leaderPhone']?.toString() ?? '-'),
+                  KeyValueRow(label: 'Members', value: g['memberCount']?.toString() ?? '-'),
+                  KeyValueRow(label: 'Cycle', value: g['cycle']?.toString() ?? '-'),
                   KeyValueRow(label: 'Meeting Day', value: g['meetingDay']?.toString() ?? '-'),
                   KeyValueRow(label: 'Meeting Time', value: g['meetingTime']?.toString() ?? '-'),
                   KeyValueRow(label: 'Meeting Place', value: g['meetingPlace']?.toString() ?? '-'),

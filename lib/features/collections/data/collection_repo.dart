@@ -5,13 +5,15 @@ class CollectionRepo {
   final ApiClient api;
   CollectionRepo(this.api);
 
-  Future<Map<String, dynamic>> list({int page = 1, int limit = 20, String? search, String? status, String? verificationStatus, String? date, String? fromDate, String? toDate}) async {
+  Future<Map<String, dynamic>> list({int page = 1, int limit = 20, String? search, String? status, String? verificationStatus, String? date, String? fromDate, String? toDate, String? loanType, String? collectedById}) async {
     final q = <String, dynamic>{'page': page, 'limit': limit};
     if (search?.isNotEmpty ?? false) q['search'] = search;
     if (verificationStatus?.isNotEmpty ?? false) q['verificationStatus'] = verificationStatus;
     if (date?.isNotEmpty ?? false) q['date'] = date;
     if (fromDate?.isNotEmpty ?? false) q['fromDate'] = fromDate;
     if (toDate?.isNotEmpty ?? false) q['toDate'] = toDate;
+    if (loanType?.isNotEmpty ?? false) q['loanType'] = loanType;
+    if (collectedById?.isNotEmpty ?? false) q['collectedById'] = collectedById;
     final res = await api.raw(() => api.dio.get('/collections', queryParameters: q));
     return Map<String, dynamic>.from(res.data as Map);
   }

@@ -52,6 +52,8 @@ import '../../features/reports/ui/daily_cash_report_page.dart';
 import '../../features/reports/ui/portfolio_report_page.dart';
 import '../../features/reports/ui/investment_report_page.dart';
 import '../../features/reports/ui/customer_report_page.dart';
+import '../../features/reports/ui/progress_report_page.dart';
+import '../../features/reports/ui/group_collection_report_page.dart';
 import '../../features/settings/ui/settings_page.dart';
 import '../../features/settings/ui/roles_permissions_page.dart';
 import '../../features/collections/ui/collection_map_page.dart';
@@ -110,7 +112,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/collections', builder: (_, __) => const CollectionListPage()),
           GoRoute(path: '/collections/new', builder: (_, __) => const CollectionFormPage()),
           GoRoute(path: '/collections/summary', builder: (_, __) => const DailySummaryPage()),
-          GoRoute(path: '/collections/verify', builder: (_, __) => const VerifyCollectionsPage()),
+          GoRoute(path: '/collections/verify', builder: (_, s) => VerifyCollectionsPage(collectedById: s.uri.queryParameters['collectedById'], collectorName: s.uri.queryParameters['name'])),
           GoRoute(path: '/collections/group', builder: (_, __) => const GroupCollectionPage()),
           GoRoute(path: '/collections/map', builder: (_, __) => const CollectionMapPage()),
           GoRoute(path: '/collections/:id/receipt', builder: (_, s) => ReceiptPage(id: s.pathParameters['id']!)),
@@ -152,6 +154,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/reports/investments', builder: (_, __) => const InvestmentReportPage()),
           GoRoute(path: '/reports/customer', builder: (_, __) => const CustomerReportPage()),
           GoRoute(path: '/reports/customer/:id', builder: (_, s) => CustomerReportPage(customerId: s.pathParameters['id'])),
+          GoRoute(path: '/reports/progress', builder: (_, __) => const ProgressReportPage()),
+          GoRoute(path: '/reports/group-collection', builder: (_, __) => const GroupCollectionReportPage()),
 
           GoRoute(path: '/settings', builder: (_, __) => const SettingsPage()),
           GoRoute(path: '/settings/roles', builder: (_, __) => const RolesPermissionsPage()),

@@ -312,7 +312,7 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
               ),
             ),
           if (_selectedLoan != null) _selectedLoanCard(),
-          if (_pendingEmis.isNotEmpty) _nextEmiCard(),
+          if (_selectedLoan != null && _emis.isNotEmpty) _todaysDueCard(),
           if (_selectedLoan != null)
             SectionCard(
               title: 'Payment',
@@ -407,6 +407,8 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
                     children: [
                       Text('${c['firstName'] ?? ''} ${c['lastName'] ?? ''} - ${loan['loanNumber'] ?? ''}'.trim(),
                           style: const TextStyle(fontWeight: FontWeight.w600)),
+                      if (c['customerId'] != null)
+                        Text('Customer #: ${c['customerId']}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                       if (assignee['name'] != null)
                         Text('Agent: ${assignee['name']}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                     ],
@@ -456,30 +458,129 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
     );
   }
 
-  Widget _nextEmiCard() {
-    final e = _pendingEmis.first;
-    final status = e['status']?.toString();
+  // ---- Today's Due helpers (mirror the web collection form) ----
+  num _emiRemaining(Map e) => toNum(e['emiAmount']) + toNum(e['lateFee']) - toNum(e['paidAmount']);
+
+  DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  // Whether an EMI's due date has already passed (strictly before today).
+  bool _isOverdueEmi(Map e, DateTime today) {
+    final due = tryParseDate(e['dueDate']?.toString())?.toLocal();
+    if (due == null) return false;
+    return _startOfDay(due).isBefore(today);
+  }
+
+  // EMIs collectible as of today = any not-fully-paid EMI whose due date is
+  // today or earlier (overdue + due today) — no double counting.
+  List<Map<String, dynamic>> _dueTodayEmis(DateTime today) {
+    return _emis.where((e) {
+      if (e['status'] == 'PAID') return false;
+      final due = tryParseDate(e['dueDate']?.toString())?.toLocal();
+      if (due == null) return false;
+      return !_startOfDay(due).isAfter(today); // due <= today
+    }).toList();
+  }
+
+  Widget _todaysDueCard() {
+    final loan = _selectedLoan!;
+    final today = _startOfDay(DateTime.now());
+    final dueEmis = _dueTodayEmis(today);
+    final overdueEmis = dueEmis.where((e) => _isOverdueEmi(e, today)).toList();
+    final dueTodayEmis = dueEmis.where((e) => !_isOverdueEmi(e, today)).toList();
+
+    // Prefer the API's authoritative, pending-aware figures (same source as the
+    // loan detail page and the web collection form) — overdue + currently-due.
+    // Fall back to the verified-only EMI schedule only when those fields are
+    // absent; re-deriving from the schedule ignores collected-but-unverified
+    // money and overstates overdue.
+    final overdueAmt = loan['overdueAmount'] != null
+        ? toNum(loan['overdueAmount'])
+        : overdueEmis.fold<num>(0, (s, e) => s + _emiRemaining(e));
+    final overdueCount = (loan['overdueCount'] ?? loan['overdueEMIs']) != null
+        ? toNum(loan['overdueCount'] ?? loan['overdueEMIs']).toInt()
+        : overdueEmis.length;
+    final dueTodayAmt = loan['dueAmount'] != null
+        ? toNum(loan['dueAmount'])
+        : dueTodayEmis.fold<num>(0, (s, e) => s + _emiRemaining(e));
+    final dueTodayCount = loan['dueAmount'] != null
+        ? (dueTodayAmt > 0 ? 1 : 0)
+        : dueTodayEmis.length;
+    final totalDue = overdueAmt + dueTodayAmt;
+
+    // Nothing due yet — show the upcoming EMI for context (mirrors the web).
+    if (totalDue <= 0) {
+      if (_pendingEmis.isEmpty) return const SizedBox.shrink();
+      final next = _pendingEmis.first;
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Next EMI', style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Text.rich(TextSpan(children: [
+                TextSpan(
+                  text: 'EMI #${next['emiNumber']} — ${formatCurrency(next['emiAmount'])}',
+                  style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                ),
+                TextSpan(
+                  text: '  (Due: ${formatDate(next['dueDate'])})',
+                  style: const TextStyle(fontWeight: FontWeight.w400, color: AppColors.textSecondary),
+                ),
+              ])),
+            ],
+          ),
+        ),
+      );
+    }
+
+    const dueTodayText = Color(0xFFB45309); // amber-700, matches web
     return Card(
+      color: AppColors.warning.withValues(alpha: 0.10),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: AppColors.warning.withValues(alpha: 0.35)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Next EMI', style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            Text('EMI #${e['emiNumber']} — ${formatCurrency(e['emiAmount'])}',
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            Text('Due: ${formatDate(e['dueDate'])}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-            if (status == 'PARTIALLY_PAID')
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  'Partially paid: ${formatCurrency(e['paidAmount'])} — Remaining: ${formatCurrency(toNum(e['emiAmount']) + toNum(e['lateFee']) - toNum(e['paidAmount']))}',
-                  style: const TextStyle(fontSize: 11, color: AppColors.warning),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Flexible(
+                  child: Text("Today's Due (overdue + due today)",
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
                 ),
-              ),
-            if (status == 'OVERDUE')
-              const Padding(padding: EdgeInsets.only(top: 4), child: Text('Overdue', style: TextStyle(fontSize: 11, color: AppColors.danger))),
+                Text(formatCurrency(totalDue),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 16,
+              runSpacing: 2,
+              children: [
+                if (overdueAmt > 0)
+                  Text.rich(TextSpan(
+                    style: const TextStyle(fontSize: 12, color: AppColors.danger),
+                    children: [
+                      TextSpan(text: 'Overdue ($overdueCount EMI${overdueCount > 1 ? 's' : ''}): '),
+                      TextSpan(text: formatCurrency(overdueAmt), style: const TextStyle(fontWeight: FontWeight.w700)),
+                    ],
+                  )),
+                if (dueTodayAmt > 0)
+                  Text.rich(TextSpan(
+                    style: const TextStyle(fontSize: 12, color: dueTodayText),
+                    children: [
+                      TextSpan(text: 'Due today ($dueTodayCount EMI${dueTodayCount > 1 ? 's' : ''}): '),
+                      TextSpan(text: formatCurrency(dueTodayAmt), style: const TextStyle(fontWeight: FontWeight.w700)),
+                    ],
+                  )),
+              ],
+            ),
           ],
         ),
       ),

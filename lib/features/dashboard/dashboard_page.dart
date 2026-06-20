@@ -534,7 +534,7 @@ class DashboardPage extends ConsumerWidget {
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
-                  onTap: () => context.push('/collections/verify'),
+                  onTap: () => context.push('/collections/verify?collectedById=${a['id']}&name=${Uri.encodeComponent(a['name']?.toString() ?? '')}'),
                   leading: Avatar(url: a['photo']?.toString(), name: a['name']?.toString() ?? 'U', size: 32),
                   title: Text(a['name']?.toString() ?? 'Unknown'),
                   subtitle: Text('${a['count']} collection${a['count'] == 1 ? '' : 's'}', style: const TextStyle(fontSize: 11)),

@@ -45,6 +45,9 @@ class AuthOrg {
   final String? logo;
   final Map<String, bool> features;
   final List<String>? menuOrder;
+  // Master switch for editing collections. Off: collections are locked once recorded.
+  // On: pending editable; verified needs the collections.edit_verified permission.
+  final bool allowCollectionEdit;
   final String? subscriptionStatus;
   final String? renewalDate;
   final String? billingCycle;
@@ -56,6 +59,7 @@ class AuthOrg {
     this.logo,
     required this.features,
     this.menuOrder,
+    this.allowCollectionEdit = false,
     this.subscriptionStatus,
     this.renewalDate,
     this.billingCycle,
@@ -78,6 +82,7 @@ class AuthOrg {
       logo: j['logo']?.toString(),
       features: feats,
       menuOrder: menu,
+      allowCollectionEdit: j['allowCollectionEdit'] == true,
       subscriptionStatus: j['subscriptionStatus']?.toString(),
       renewalDate: j['renewalDate']?.toString(),
       billingCycle: j['billingCycle']?.toString(),
@@ -91,6 +96,7 @@ class AuthOrg {
         'logo': logo,
         'features': features,
         'menuOrder': menuOrder,
+        'allowCollectionEdit': allowCollectionEdit,
         'subscriptionStatus': subscriptionStatus,
         'renewalDate': renewalDate,
         'billingCycle': billingCycle,

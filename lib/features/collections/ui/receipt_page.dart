@@ -107,17 +107,22 @@ class _ReceiptPageState extends ConsumerState<ReceiptPage> {
           final org = Map<String, dynamic>.from(orgRaw is Map ? orgRaw : {});
           final auth = ref.watch(authProvider);
           final role = auth.user?.role;
-          final isPending = (collection['verificationStatus']?.toString() ?? '') == 'PENDING';
-          // Field officers may only edit the collected amount within 24 hours of recording it.
+          final status = collection['verificationStatus']?.toString() ?? 'PENDING';
+          // Mirrors the backend. The org master switch must be on for any edit; a verified
+          // collection additionally requires the collections.edit_verified permission.
+          final editingEnabled = auth.org?.allowCollectionEdit == true;
+          final statusEditable = status == 'PENDING' ||
+              (status == 'VERIFIED' && auth.hasPermission('collections.edit_verified'));
+          // Editing requires the collections.edit permission (collections.edit_verified also grants entry).
+          final canEditCollections = auth.hasPermission('collections.edit') ||
+              auth.hasPermission('collections.edit_verified');
+          // Field officers may only edit their own collection within 24 hours of recording it.
           final created = DateTime.tryParse(collection['createdAt']?.toString() ?? '');
           final withinFieldOfficerEditWindow =
               created != null && DateTime.now().difference(created.toLocal()) <= const Duration(hours: 24);
-          final canEdit = isPending &&
-              (role == 'ORG_ADMIN' ||
-                  role == 'MANAGER' ||
-                  (role == 'FIELD_OFFICER' &&
-                      collection['collectedById'] == auth.user?.id &&
-                      withinFieldOfficerEditWindow));
+          final fieldOfficerOk = role != 'FIELD_OFFICER' ||
+              (collection['collectedById'] == auth.user?.id && withinFieldOfficerEditWindow);
+          final canEdit = editingEnabled && statusEditable && canEditCollections && fieldOfficerOk;
           return ListView(
             padding: const EdgeInsets.all(14),
             children: [

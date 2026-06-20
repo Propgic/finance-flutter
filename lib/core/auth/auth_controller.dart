@@ -106,6 +106,7 @@ class AuthController extends Notifier<AuthState> {
       logo: state.org!.logo,
       features: {...state.org!.features, ...features},
       menuOrder: state.org!.menuOrder,
+      allowCollectionEdit: state.org!.allowCollectionEdit,
       subscriptionStatus: state.org!.subscriptionStatus,
       renewalDate: state.org!.renewalDate,
       billingCycle: state.org!.billingCycle,
