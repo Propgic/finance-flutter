@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../../team/data/team_repo.dart';
+import '../../app_shell.dart';
 import '../data/loan_repo.dart';
 
 /// Bulk "Assign Loan" screen — pick an employee, then tick the active loans that
@@ -140,6 +141,7 @@ class _AssignLoanPageState extends ConsumerState<AssignLoanPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(title: const Text('Assign Loans')),
       body: _loading
           ? const LoadingView()

@@ -279,7 +279,7 @@ class _CollectionListPageState extends ConsumerState<CollectionListPage> {
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
                 isDense: true,
-                hintText: 'Search receipt, customer, loan #...',
+                hintText: 'Search receipt, name, customer #, phone, loan #...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchCtrl.text.isNotEmpty
                     ? IconButton(

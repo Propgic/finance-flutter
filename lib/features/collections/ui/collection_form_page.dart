@@ -235,7 +235,7 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
                     controller: _searchCtrl,
                     decoration: InputDecoration(
                       prefixIcon: const Icon(Icons.search),
-                      hintText: 'Search by loan #, customer name...',
+                      hintText: 'Search by loan #, name, customer #, phone...',
                       suffixIcon: _searchCtrl.text.isEmpty
                           ? null
                           : IconButton(

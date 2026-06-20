@@ -88,9 +88,9 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
         fetcher: (search) async {
           final api = ref.read(apiClientProvider);
           final d = await api.get('/team');
-          final list = d is List ? d : (d is Map && d['data'] is List ? d['data'] : const []);
+          final list = (d is List ? d : (d is Map && d['data'] is List ? d['data'] : const [])) as List;
           var users = list
-              .map((e) => Map<String, dynamic>.from(e as Map))
+              .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e as Map))
               .where((u) => u['isActive'] == true && u['role'] == 'FIELD_OFFICER')
               .toList();
           if (search.isNotEmpty) {
