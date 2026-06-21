@@ -30,6 +30,11 @@ class LoanGroupRepo {
   Future<void> toggleStatus(String id) async => api.patch('/loan-groups/$id/status');
   Future<void> removeLoan(String id, String loanId) async => api.delete('/loan-groups/$id/loans/$loanId');
   Future<void> assignLoans(String id, List<String> loanIds) async => api.post('/loan-groups/$id/loans', data: {'loanIds': loanIds});
+
+  /// Promote a member (customerId) to group leader, or pass null to clear it.
+  /// The backend denormalizes the member's name + phone into the group's leader fields.
+  Future<void> setLeader(String id, String? customerId) async =>
+      api.patch('/loan-groups/$id/leader', data: {'customerId': customerId});
 }
 
 final loanGroupRepoProvider = Provider<LoanGroupRepo>((ref) => LoanGroupRepo(ref.read(apiClientProvider)));

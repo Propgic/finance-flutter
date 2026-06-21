@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
-import '../data/loan_repo.dart';
 import '../../customers/data/customer_repo.dart';
+import 'loan_preview_page.dart';
 
 class LoanCreatePage extends ConsumerStatefulWidget {
   const LoanCreatePage({super.key});
@@ -19,6 +18,8 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
   Map<String, dynamic>? _assignee;
   String _loanType = 'PERSONAL';
   String _tenureType = 'MONTHS';
+  String _interestType = 'REDUCING';
+  bool _deductUpfront = false;
   DateTime _startDate = DateTime.now();
   final _principal = TextEditingController();
   final _rate = TextEditingController();
@@ -37,7 +38,6 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
   final _propValue = TextEditingController();
   final _guarantorName = TextEditingController();
   final _guarantorPhone = TextEditingController();
-  bool _saving = false;
   Map<String, String> _suretyByType = const {};
 
   @override
@@ -59,6 +59,19 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
   }
 
   String get _suretyPolicy => _suretyByType[_loanType] ?? 'OPTIONAL';
+
+  // DAILY/WEEKLY loan TYPES are fixed flat-upfront — the method picker is only for term loans.
+  bool get _showInterestMethod => _loanType != 'DAILY' && _loanType != 'WEEKLY';
+  // Sub-monthly cadence (tenure counted in weeks/days) chosen via the tenure Unit dropdown.
+  bool get _isPeriodUnit => _tenureType == 'WEEKS' || _tenureType == 'DAYS';
+  String get _periodWord => _tenureType == 'WEEKS' ? 'week' : 'day';
+
+  String get _rateLabel {
+    if (!_showInterestMethod) return 'Flat Interest Rate (% on principal) *';
+    if (_isPeriodUnit && _interestType == 'REDUCING') return 'Interest Rate (% per $_periodWord) *';
+    if (_isPeriodUnit) return 'Flat Interest Rate (% on principal) *';
+    return 'Interest Rate (% p.a.) *';
+  }
 
   Future<void> _pickCustomer() async {
     final picked = await showModalBottomSheet<Map<String, dynamic>>(
@@ -108,7 +121,10 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
     if (picked != null) setState(() => _assignee = picked);
   }
 
-  Future<void> _save() async {
+  // Validate, assemble the request body, then push the preview screen. The actual POST
+  // happens on the preview after the user confirms — mirroring the web create wizard's
+  // "Review & Confirm" step.
+  Future<void> _review() async {
     if (!_formKey.currentState!.validate()) return;
     if (_customer == null) return showToast('Select a customer', error: true);
     if (_assignee == null) {
@@ -124,46 +140,63 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
         (_guarantorName.text.trim().isEmpty || _guarantorPhone.text.trim().isEmpty)) {
       return showToast('Surety name and phone are required for this loan type', error: true);
     }
-    setState(() => _saving = true);
-    try {
-      final body = <String, dynamic>{
-        'customerId': _customer!['id'],
-        if (_assignee != null) 'assignedToId': _assignee!['id'],
-        'loanType': _loanType,
-        'principalAmount': double.tryParse(_principal.text),
-        'interestRate': double.tryParse(_rate.text),
-        'tenure': int.tryParse(_tenure.text),
-        'tenureType': _tenureType,
-        'startDate': formatInputDate(_startDate),
-        'processingFee': double.tryParse(_fee.text) ?? 0,
-        'lateFeePerDay': double.tryParse(_lateFee.text) ?? 0,
-        if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
-      };
-      if (_loanType == 'GOLD') {
-        body['goldWeight'] = double.tryParse(_goldWeight.text);
-        body['goldPurity'] = _goldPurity.text.trim();
-      }
-      if (_loanType == 'VEHICLE') {
-        body['vehicleType'] = _vehType.text.trim();
-        body['vehicleMake'] = _vehMake.text.trim();
-        body['vehicleModel'] = _vehModel.text.trim();
-      }
-      if (_loanType == 'PROPERTY') {
-        body['propertyType'] = _propType.text.trim();
-        body['propertyAddress'] = _propAddr.text.trim();
-        body['propertyValue'] = double.tryParse(_propValue.text);
-      }
-      if (_guarantorName.text.trim().isNotEmpty) body['guarantorName'] = _guarantorName.text.trim();
-      if (_guarantorPhone.text.trim().isNotEmpty) body['guarantorPhone'] = _guarantorPhone.text.trim();
 
-      await ref.read(loanRepoProvider).create(body);
-      showToast('Loan created');
-      if (mounted) context.go('/loans');
-    } on ApiException catch (e) {
-      showToast(e.message, error: true);
-    } finally {
-      if (mounted) setState(() => _saving = false);
+    final body = <String, dynamic>{
+      'customerId': _customer!['id'],
+      if (_assignee != null) 'assignedToId': _assignee!['id'],
+      'loanType': _loanType,
+      'principalAmount': double.tryParse(_principal.text),
+      'interestRate': double.tryParse(_rate.text),
+      'tenure': int.tryParse(_tenure.text),
+      'tenureType': _tenureType,
+      // Interest method (DAILY/WEEKLY types are normalized to flat-upfront by the backend).
+      if (_showInterestMethod) 'interestType': _interestType,
+      if (_showInterestMethod) 'deductInterestUpfront': _interestType == 'FLAT' && _deductUpfront,
+      'startDate': formatInputDate(_startDate),
+      'processingFee': double.tryParse(_fee.text) ?? 0,
+      'lateFeePerDay': double.tryParse(_lateFee.text) ?? 0,
+      if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
+    };
+    if (_loanType == 'GOLD') {
+      body['goldWeight'] = double.tryParse(_goldWeight.text);
+      body['goldPurity'] = _goldPurity.text.trim();
     }
+    if (_loanType == 'VEHICLE') {
+      body['vehicleType'] = _vehType.text.trim();
+      body['vehicleMake'] = _vehMake.text.trim();
+      body['vehicleModel'] = _vehModel.text.trim();
+    }
+    if (_loanType == 'PROPERTY') {
+      body['propertyType'] = _propType.text.trim();
+      body['propertyAddress'] = _propAddr.text.trim();
+      body['propertyValue'] = double.tryParse(_propValue.text);
+    }
+    if (_guarantorName.text.trim().isNotEmpty) body['guarantorName'] = _guarantorName.text.trim();
+    if (_guarantorPhone.text.trim().isNotEmpty) body['guarantorPhone'] = _guarantorPhone.text.trim();
+
+    final preview = computeLoanPreview(
+      loanType: _loanType,
+      tenureType: _tenureType,
+      interestType: _showInterestMethod ? _interestType : 'FLAT',
+      deductUpfront: _showInterestMethod && _interestType == 'FLAT' && _deductUpfront,
+      amount: double.tryParse(_principal.text) ?? 0,
+      rate: double.tryParse(_rate.text) ?? 0,
+      tenure: int.tryParse(_tenure.text) ?? 1,
+      processingFee: double.tryParse(_fee.text) ?? 0,
+    );
+
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => LoanPreviewPage(
+        body: body,
+        preview: preview,
+        customerLabel: '${_customer!['firstName'] ?? ''} ${_customer!['lastName'] ?? ''}'.trim(),
+        loanTypeLabel: titleCase(_loanType),
+        assigneeLabel: _assignee?['name']?.toString(),
+        startDate: _startDate,
+        rateText: _rate.text.trim(),
+      ),
+    ));
   }
 
   @override
@@ -229,7 +262,7 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
                   TextFormField(
                     controller: _rate,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Interest Rate (%) *'),
+                    decoration: InputDecoration(labelText: _rateLabel),
                     validator: (v) => double.tryParse(v ?? '') != null ? null : 'Required',
                   ),
                   const SizedBox(height: 10),
@@ -254,11 +287,52 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
                             DropdownMenuItem(value: 'MONTHS', child: Text('Months')),
                             DropdownMenuItem(value: 'YEARS', child: Text('Years')),
                           ],
-                          onChanged: (v) => setState(() => _tenureType = v!),
+                          onChanged: (v) => setState(() {
+                            _tenureType = v!;
+                            // Sub-monthly collection is conventionally flat; monthly/yearly
+                            // reducing. The user can still override the method below.
+                            _interestType = _isPeriodUnit ? 'FLAT' : 'REDUCING';
+                            if (_interestType != 'FLAT') _deductUpfront = false;
+                          }),
                         ),
                       ),
                     ],
                   ),
+                  if (_showInterestMethod) ...[
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      initialValue: _interestType,
+                      decoration: const InputDecoration(labelText: 'Interest Calculation'),
+                      items: const [
+                        DropdownMenuItem(value: 'REDUCING', child: Text('Reducing Balance (interest on outstanding)')),
+                        DropdownMenuItem(value: 'FLAT', child: Text('Flat Rate (interest on full principal)')),
+                      ],
+                      onChanged: (v) => setState(() {
+                        _interestType = v ?? 'REDUCING';
+                        if (_interestType != 'FLAT') _deductUpfront = false;
+                      }),
+                    ),
+                    if (_isPeriodUnit && _interestType == 'REDUCING')
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          'Interest is charged on the outstanding balance each $_periodWord; '
+                          'the rate is applied per $_periodWord (not annualized).',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    if (_interestType == 'FLAT')
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Deduct interest upfront'),
+                        subtitle: const Text(
+                          'Interest is taken out of the disbursed amount; the EMIs repay '
+                          'principal only. Leave off to add the interest into each EMI.',
+                        ),
+                        value: _deductUpfront,
+                        onChanged: (v) => setState(() => _deductUpfront = v),
+                      ),
+                  ],
                   const SizedBox(height: 10),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -344,10 +418,8 @@ class _LoanCreatePageState extends ConsumerState<LoanCreatePage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _saving ? null : _save,
-                child: _saving
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Create Loan'),
+                onPressed: _review,
+                child: const Text('Review & Create'),
               ),
             ),
             const SizedBox(height: 20),

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../auth/account_store.dart';
 import '../maintenance/maintenance_controller.dart';
 
 class ApiException implements Exception {
@@ -14,35 +15,57 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-// Tokens at rest: the short-lived access token and the long-lived refresh token
-// live in the OS keychain/keystore (flutter_secure_storage), NOT SharedPreferences.
-// A token left in SharedPreferences by an older build is read once as a legacy
-// fallback and migrated into secure storage on the next refresh.
+// Tokens at rest live in the OS keychain/keystore (flutter_secure_storage), keyed
+// per account by [AccountStore]; the access/refresh getters and `save` here always
+// resolve the *active* account so the interceptor and silent-refresh below need no
+// account awareness. A token left behind by a pre-multi-account build is read once
+// as a legacy fallback and migrated on bootstrap.
 const _secure = FlutterSecureStorage();
 
 class TokenStore {
-  static const _kAccess = 'access_token';
-  static const _kRefresh = 'refresh_token';
-
   static Future<String?> access() async {
-    final t = await _secure.read(key: _kAccess);
-    if (t != null && t.isNotEmpty) return t;
+    final id = await AccountStore.activeId();
+    if (id != null) {
+      final t = await AccountStore.tokensFor(id);
+      if (t.access != null && t.access!.isNotEmpty) return t.access;
+    }
+    // legacy single-session fallback (pre-migration)
+    final legacy = await _secure.read(key: 'access_token');
+    if (legacy != null && legacy.isNotEmpty) return legacy;
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('token'); // legacy fallback
+    return prefs.getString('token');
   }
 
-  static Future<String?> refresh() => _secure.read(key: _kRefresh);
+  static Future<String?> refresh() async {
+    final id = await AccountStore.activeId();
+    if (id != null) {
+      final t = await AccountStore.tokensFor(id);
+      if (t.refresh != null && t.refresh!.isNotEmpty) return t.refresh;
+    }
+    return _secure.read(key: 'refresh_token'); // legacy fallback
+  }
 
   static Future<void> save({String? access, String? refresh}) async {
-    if (access != null) await _secure.write(key: _kAccess, value: access);
-    if (refresh != null) await _secure.write(key: _kRefresh, value: refresh);
+    final id = await AccountStore.activeId();
+    if (id != null) {
+      await AccountStore.setTokens(id, access: access, refresh: refresh);
+    } else {
+      // No active account yet (legacy refresh before migration) — keep the old keys.
+      if (access != null) await _secure.write(key: 'access_token', value: access);
+      if (refresh != null) await _secure.write(key: 'refresh_token', value: refresh);
+    }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token'); // migrate off legacy storage
+    await prefs.remove('token');
   }
 
+  /// Clears the ACTIVE account's tokens (per-account 401 teardown) plus any
+  /// leftover legacy keys. The account's profile stays in the list so the
+  /// switcher can prompt a re-sign-in.
   static Future<void> clear() async {
-    await _secure.delete(key: _kAccess);
-    await _secure.delete(key: _kRefresh);
+    final id = await AccountStore.activeId();
+    if (id != null) await AccountStore.clearTokens(id);
+    await _secure.delete(key: 'access_token');
+    await _secure.delete(key: 'refresh_token');
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
   }
@@ -143,12 +166,9 @@ class ApiClient {
         ref.read(maintenanceProvider.notifier).trigger(msg);
       }
       if (code == 401) {
-        // Refresh already attempted+failed in the interceptor; tear down.
+        // Refresh already attempted+failed in the interceptor; tear down the
+        // active account's tokens (its profile stays for a re-sign-in prompt).
         await TokenStore.clear();
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('user');
-        await prefs.remove('org');
-        await prefs.remove('permissions');
       }
       throw ApiException(msg, statusCode: code, data: data);
     }

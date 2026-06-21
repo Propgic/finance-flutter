@@ -324,8 +324,8 @@ class DashboardPage extends ConsumerWidget {
     final openBal = toNum(d['openBalance']);
     final closing = toNum(d['closingBalance']);
     final withdrawals = toNum(d['todayInvestmentWithdrawalsAmount']);
-    final inflow = toNum(d['totalCollectionsToday']) + toNum(d['todayInvestmentAmount']);
-    final outflow = toNum(d['todayDisbursedAmount']) + toNum(d['todayExpensesAmount']) + withdrawals;
+    final inflow = toNum(d['totalCollectionsToday']) + toNum(d['todayInvestmentAmount']) + toNum(d['todayChitCollectionAmount']);
+    final outflow = toNum(d['todayDisbursedAmount']) + toNum(d['todayExpensesAmount']) + withdrawals + toNum(d['todayChitPayoutAmount']);
     return SectionCard(
       title: 'Day Report',
       child: Column(

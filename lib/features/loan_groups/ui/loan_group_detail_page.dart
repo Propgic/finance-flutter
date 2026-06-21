@@ -28,6 +28,19 @@ class LoanGroupDetailPage extends ConsumerWidget {
     }
   }
 
+  // Promote a member to leader (or clear it when customerId is null). The backend copies
+  // the member's name + phone into the group's leader fields, shown on the listing page.
+  Future<void> _setLeader(WidgetRef ref, String? customerId) async {
+    try {
+      await ref.read(loanGroupRepoProvider).setLeader(id, customerId);
+      ref.invalidate(groupDetailProvider(id));
+      ref.invalidate(groupLoansProvider(id));
+      showToast(customerId == null ? 'Group leader cleared' : 'Group leader updated');
+    } on ApiException catch (e) {
+      showToast(e.message, error: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(groupDetailProvider(id));
@@ -81,16 +94,38 @@ class LoanGroupDetailPage extends ConsumerWidget {
                 error: (e, _) => ErrorView(message: e.toString()),
                 data: (items) {
                   if (items.isEmpty) return const EmptyView(message: 'No loans assigned');
+                  final leaderPhone = g['leaderPhone']?.toString() ?? '';
                   return Column(
                     children: items.map((l) {
                       final m = Map<String, dynamic>.from(l as Map);
                       final c = Map<String, dynamic>.from(m['customer'] ?? {});
+                      final phone = c['phone']?.toString() ?? '';
+                      final isLeader = leaderPhone.isNotEmpty && phone.isNotEmpty && phone == leaderPhone;
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         onTap: () => context.push('/loans/${m['id']}'),
-                        title: Text(m['loanNumber']?.toString() ?? ''),
+                        title: Row(
+                          children: [
+                            Flexible(child: Text(m['loanNumber']?.toString() ?? '')),
+                            if (isLeader) ...[
+                              const SizedBox(width: 6),
+                              StatusChip(label: 'LEADER', color: AppColors.warning),
+                            ],
+                          ],
+                        ),
                         subtitle: Text('${c['firstName'] ?? ''} ${c['lastName'] ?? ''} • ${formatCurrency(m['principalAmount'])}'),
-                        trailing: StatusChip(label: m['status']?.toString() ?? '-', color: statusColor(m['status']?.toString())),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(isLeader ? Icons.star : Icons.star_border,
+                                  color: isLeader ? AppColors.warning : AppColors.textSecondary),
+                              tooltip: isLeader ? 'Remove as leader' : 'Make leader',
+                              onPressed: () => _setLeader(ref, isLeader ? null : m['customerId']?.toString()),
+                            ),
+                            StatusChip(label: m['status']?.toString() ?? '-', color: statusColor(m['status']?.toString())),
+                          ],
+                        ),
                       );
                     }).toList(),
                   );

@@ -147,7 +147,8 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
       },
       itemBuilder: (_) => [
         if (status == 'UPCOMING') const PopupMenuItem(value: 'start', child: Text('Start')),
-        if (status == 'UPCOMING') const PopupMenuItem(value: 'edit', child: Text('Edit chitfund')),
+        // Editable at any status; started chits get a warning in the dialog.
+        const PopupMenuItem(value: 'edit', child: Text('Edit chitfund')),
         if (status == 'UPCOMING') const PopupMenuItem(value: 'add_member', child: Text('Add Member')),
         if (status == 'ACTIVE') const PopupMenuItem(value: 'record_payment', child: Text('Record Payment')),
         if (status == 'ACTIVE') const PopupMenuItem(value: 'final_dues', child: Text('Final Dues')),
@@ -811,6 +812,7 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
     final totalC = TextEditingController(text: c['totalAmount']?.toString() ?? '');
     final instC = TextEditingController(text: c['monthlyInstallment']?.toString() ?? '');
     final commC = TextEditingController(text: c['commission']?.toString() ?? '');
+    final started = c['status'] != 'UPCOMING';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -818,7 +820,24 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (started) ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.warning.withValues(alpha: 0.5)),
+                  ),
+                  child: Text(
+                    'This chitfund has started. Changing total amount, installment or commission '
+                    'can make existing auctions, dues and payouts inconsistent.',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               TextField(controller: nameC, decoration: const InputDecoration(labelText: 'Name')),
               const SizedBox(height: 8),
               TextField(controller: totalC, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Total Amount')),
@@ -878,8 +897,16 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
   final _amountC = TextEditingController();
   final _refC = TextEditingController();
   String _mode = 'CASH';
+  DateTime _paidDate = DateTime.now();
 
   int get _duration => toNum(widget.chitfund['durationMonths']).toInt();
+  // Only let the user record payments up to the current month — future months
+  // haven't happened yet, so showing all `_duration` months is misleading.
+  int get _visibleMonths {
+    final cm = toNum(widget.chitfund['currentMonth']).toInt();
+    final v = cm <= 0 ? _duration : (cm < _duration ? cm : _duration);
+    return v < 1 ? 1 : v;
+  }
   bool get _isFinalAccum => widget.chitfund['dividendType'] == 'ACCUMULATED' && _month == _duration;
 
   @override
@@ -937,7 +964,15 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
       _selectedMemberId = memberId;
       final list = (_dues?['dues'] as List?) ?? const [];
       final due = list.cast<Map?>().firstWhere((d) => d?['memberId']?.toString() == memberId, orElse: () => null);
-      _amountC.text = due != null ? (toNum(due['expectedAmount'])).toStringAsFixed(2) : '';
+      if (due == null) { _amountC.text = ''; return; }
+      // Pre-fill the remaining balance, not the full expected amount — a member may have
+      // already made a partial payment this month, in which case they only owe the rest.
+      final alreadyPaid = _monthPayments
+          .map((p) => p as Map)
+          .where((p) => p['chitfundMemberId']?.toString() == memberId && (p['type']?.toString() ?? 'COLLECTION') != 'PAYOUT')
+          .fold<double>(0, (sum, p) => sum + toNum(p['amount']).toDouble());
+      final remaining = toNum(due['expectedAmount']).toDouble() - alreadyPaid;
+      _amountC.text = (remaining < 0 ? 0 : remaining).toStringAsFixed(2);
     });
   }
 
@@ -953,6 +988,7 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
         'amount': amt,
         'paymentMode': _mode,
         'reference': _refC.text.isEmpty ? null : _refC.text,
+        'paidDate': formatInputDate(_paidDate),
       });
       showToast('Payment recorded');
       widget.onRecorded();
@@ -968,9 +1004,24 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
   @override
   Widget build(BuildContext context) {
     final c = widget.chitfund;
-    final paidIds = _monthPayments.map((p) => (p as Map)['chitfundMemberId']?.toString()).toSet();
+    // Only COLLECTION payments count as "installment paid". The winner has a PAYOUT
+    // record for the month they won but still owes their own installment, so exclude
+    // PAYOUT records here — otherwise the winner is dropped from the picker.
+    final collectionPayments = _monthPayments
+        .where((p) => ((p as Map)['type']?.toString() ?? 'COLLECTION') != 'PAYOUT')
+        .toList();
+    final paidByMember = <String, double>{};
+    for (final p in collectionPayments) {
+      final id = (p as Map)['chitfundMemberId']?.toString() ?? '';
+      paidByMember[id] = (paidByMember[id] ?? 0) + toNum(p['amount']).toDouble();
+    }
     final allDues = (_dues?['dues'] as List?) ?? const [];
-    final selectable = allDues.where((d) => !paidIds.contains((d as Map)['memberId']?.toString())).toList();
+    // A member is only "done" once they've paid at least their expected amount for the
+    // month. Members who paid a partial amount still owe a balance, so keep them in the
+    // picker so the remaining due can be collected.
+    double remainingFor(Map d) => toNum(d['expectedAmount']).toDouble() - (paidByMember[d['memberId']?.toString()] ?? 0);
+    final selectable = allDues.where((d) => remainingFor(d as Map) > 0.01).toList();
+    final fullyPaidCount = allDues.length - selectable.length;
     final selectedDue = allDues.cast<Map?>().firstWhere(
           (d) => d?['memberId']?.toString() == _selectedMemberId,
           orElse: () => null,
@@ -995,7 +1046,7 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
             DropdownButtonFormField<int>(
               initialValue: _month,
               decoration: const InputDecoration(labelText: 'Month'),
-              items: List.generate(_duration, (i) {
+              items: List.generate(_visibleMonths, (i) {
                 final m = i + 1;
                 final tags = <String>[];
                 if (m == toNum(c['currentMonth']).toInt()) tags.add('current');
@@ -1025,12 +1076,14 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
                 isExpanded: true,
                 items: selectable.map((raw) {
                   final d = Map<String, dynamic>.from(raw as Map);
+                  final paid = paidByMember[d['memberId']?.toString()] ?? 0;
+                  final name = '#${d['ticketNumber']} ${d['customerName'] ?? 'Member'}${d['hasWonAuction'] == true ? ' (won)' : ''}';
+                  final label = paid > 0
+                      ? '$name — ${formatCurrency(remainingFor(d))} due (paid ${formatCurrency(paid)} of ${formatCurrency(d['expectedAmount'])})'
+                      : '$name — ${formatCurrency(d['expectedAmount'])}';
                   return DropdownMenuItem(
                     value: d['memberId'].toString(),
-                    child: Text(
-                      '#${d['ticketNumber']} ${d['customerName'] ?? 'Member'}${d['hasWonAuction'] == true ? ' (won)' : ''} — ${formatCurrency(d['expectedAmount'])}',
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: Text(label, overflow: TextOverflow.ellipsis),
                   );
                 }).toList(),
                 onChanged: selectable.isEmpty ? null : _onSelectMember,
@@ -1060,6 +1113,22 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
               const SizedBox(height: 12),
               TextField(controller: _amountC, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Amount Collected')),
               const SizedBox(height: 12),
+              InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _paidDate,
+                    firstDate: DateTime(2015),
+                    lastDate: DateTime.now().add(const Duration(days: 1)),
+                  );
+                  if (picked != null) setState(() => _paidDate = picked);
+                },
+                child: InputDecorator(
+                  decoration: const InputDecoration(labelText: 'Payment Date'),
+                  child: Text(formatDate(_paidDate)),
+                ),
+              ),
+              const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _mode,
                 decoration: const InputDecoration(labelText: 'Payment Mode'),
@@ -1069,7 +1138,7 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
               const SizedBox(height: 12),
               TextField(controller: _refC, decoration: const InputDecoration(labelText: 'Reference', hintText: 'Txn ID / cheque #')),
               const SizedBox(height: 12),
-              Text('${_monthPayments.length} of ${widget.members.length} members paid for month $_month',
+              Text('$fullyPaidCount of ${widget.members.length} members paid for month $_month',
                   style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
               const SizedBox(height: 16),
               SizedBox(

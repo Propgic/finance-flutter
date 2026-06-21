@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/auth/biometric_service.dart';
@@ -9,7 +10,11 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
-  const LoginPage({super.key});
+  /// When true the screen is shown on top of an authed session to *add* another
+  /// account: biometric auto-unlock is skipped and a successful sign-in drops
+  /// the user back on the dashboard for the newly added account.
+  final bool addMode;
+  const LoginPage({super.key, this.addMode = false});
   @override
   ConsumerState<LoginPage> createState() => _LoginPageState();
 }
@@ -26,7 +31,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   void initState() {
     super.initState();
-    _checkBio();
+    // In add-account mode we never auto-unlock with biometrics — those
+    // credentials belong to an existing account and would just re-add it.
+    if (!widget.addMode) _checkBio();
   }
 
   Future<void> _checkBio() async {
@@ -88,9 +95,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       final accs = await ctrl.loginStep1(_phone.text.trim(), _password.text);
       if (accs.isNotEmpty) {
         setState(() => _accounts = accs);
-      } else if (!fromBiometric) {
+      } else {
         // Single-org login completed
-        await _maybeOfferEnableBio();
+        await _onLoggedIn(fromBiometric: fromBiometric);
       }
     } on ApiException catch (e) {
       showToast(e.message, error: true);
@@ -109,12 +116,26 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             password: _password.text,
             orgId: orgId,
           );
-      await _maybeOfferEnableBio();
+      await _onLoggedIn();
     } on ApiException catch (e) {
       showToast(e.message, error: true);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Post-login routing. In add-account mode we explicitly land on the dashboard
+  /// for the new account (the router doesn't auto-redirect off `/add-account`);
+  /// in normal mode the auth-state change drives the redirect, and we may offer
+  /// to enable biometric unlock for this primary login.
+  Future<void> _onLoggedIn({bool fromBiometric = false}) async {
+    if (widget.addMode) {
+      if (!mounted) return;
+      showToast('Account added');
+      context.go('/dashboard');
+      return;
+    }
+    if (!fromBiometric) await _maybeOfferEnableBio();
   }
 
   @override
@@ -128,7 +149,15 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top),
               child: Column(
                 children: [
-                  const SizedBox(height: 40),
+                  if (widget.addMode)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => context.canPop() ? context.pop() : context.go('/dashboard'),
+                      ),
+                    ),
+                  SizedBox(height: widget.addMode ? 8 : 40),
                   _brandHeader(),
                   const SizedBox(height: 28),
                   Padding(
@@ -188,9 +217,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('Welcome back', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+        Text(widget.addMode ? 'Add account' : 'Welcome back', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
-        const Text('Sign in to continue', style: TextStyle(color: AppColors.textSecondary)),
+        Text(widget.addMode ? 'Sign in to another account' : 'Sign in to continue', style: const TextStyle(color: AppColors.textSecondary)),
         const SizedBox(height: 20),
         TextField(
           controller: _phone,
@@ -275,7 +304,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: _loading ? null : () => _selectOrg(acc['orgId'].toString()),
+              onTap: _loading ? null : () => _selectOrg(acc['id'].toString()),
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(

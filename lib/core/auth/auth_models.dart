@@ -110,18 +110,21 @@ class AuthState {
   final AuthOrg? org;
   final String? token;
   final bool loading;
+  // Id of the active stored account ("<userId>:<orgId>"); drives the switcher.
+  final String? accountId;
 
-  const AuthState({this.user, this.org, this.token, this.loading = true});
+  const AuthState({this.user, this.org, this.token, this.loading = true, this.accountId});
 
   bool get isAuthed => token != null && user != null && org != null;
 
-  AuthState copyWith({AuthUser? user, AuthOrg? org, String? token, bool? loading, bool clear = false}) {
+  AuthState copyWith({AuthUser? user, AuthOrg? org, String? token, bool? loading, String? accountId, bool clear = false}) {
     if (clear) return const AuthState(loading: false);
     return AuthState(
       user: user ?? this.user,
       org: org ?? this.org,
       token: token ?? this.token,
       loading: loading ?? this.loading,
+      accountId: accountId ?? this.accountId,
     );
   }
 

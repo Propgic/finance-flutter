@@ -295,11 +295,11 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
               child: Column(
                 children: [
                   _text('address', 'Address', maxLines: 2),
-                  _text('city', 'City', required: true),
-                  _text('district', 'District', required: true),
-                  _text('state', 'State', required: true),
-                  _text('pincode', 'Pincode', required: true, keyboard: TextInputType.number, validator: (v) {
-                    if (v == null || v.isEmpty) return 'Required';
+                  _text('city', 'City'),
+                  _text('district', 'District'),
+                  _text('state', 'State'),
+                  _text('pincode', 'Pincode', keyboard: TextInputType.number, validator: (v) {
+                    if (v == null || v.isEmpty) return null;
                     if (!RegExp(r'^\d{6}$').hasMatch(v)) return 'Must be 6 digits';
                     return null;
                   }),

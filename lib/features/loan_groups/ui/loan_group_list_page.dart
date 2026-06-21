@@ -55,8 +55,15 @@ class _LoanGroupListPageState extends ConsumerState<LoanGroupListPage> {
               itemBuilder: (ctx, i) {
                 final g = Map<String, dynamic>.from(items[i] as Map);
                 final counts = Map<String, dynamic>.from(g['_count'] ?? {});
+                final leaderName = g['leaderName']?.toString() ?? '';
+                final leaderPhone = g['leaderPhone']?.toString() ?? '';
+                final leaderText = leaderName.isNotEmpty && leaderPhone.isNotEmpty
+                    ? '$leaderName · $leaderPhone'
+                    : leaderName.isNotEmpty
+                        ? leaderName
+                        : leaderPhone;
                 final subtitleParts = <String>[
-                  if ((g['leaderName']?.toString() ?? '').isNotEmpty) g['leaderName'].toString(),
+                  if (leaderText.isNotEmpty) leaderText,
                   if (g['memberCount'] != null) '${g['memberCount']} members',
                   if ((g['cycle']?.toString() ?? '').isNotEmpty) 'Cycle: ${g['cycle']}',
                 ];

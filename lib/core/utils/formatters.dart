@@ -40,6 +40,23 @@ String formatDateTime(dynamic v) {
 
 String formatInputDate(DateTime d) => _inputDate.format(d);
 
+/// Formats a chit auction time stored as a "HH:mm" 24-hour string into a
+/// 12-hour "h:mm AM/PM" label. Returns '-' when unset (legacy/mobile chits may
+/// omit it). Mirrors formatChitTime() in the web app's formatters.js.
+String formatChitTime(dynamic v) {
+  if (v == null) return '-';
+  final time = v.toString().trim();
+  if (time.isEmpty) return '-';
+  final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(time);
+  if (m == null) return time;
+  final hour = int.parse(m.group(1)!);
+  final minute = m.group(2)!;
+  if (hour > 23 || int.parse(minute) > 59) return time;
+  final period = hour < 12 ? 'AM' : 'PM';
+  final h12 = hour % 12 == 0 ? 12 : hour % 12;
+  return '$h12:$minute $period';
+}
+
 DateTime? tryParseDate(String? s) {
   if (s == null || s.isEmpty) return null;
   try {

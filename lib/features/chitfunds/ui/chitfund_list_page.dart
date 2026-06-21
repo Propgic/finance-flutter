@@ -48,12 +48,18 @@ class _ChitfundListPageState extends ConsumerState<ChitfundListPage> {
               itemCount: items.length,
               itemBuilder: (ctx, i) {
                 final c = Map<String, dynamic>.from(items[i] as Map);
+                final chitTime = c['chitTime']?.toString().trim() ?? '';
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   child: ListTile(
                     onTap: () => context.push('/chitfunds/${c['id']}'),
                     title: Text(c['name']?.toString() ?? ''),
-                    subtitle: Text('${formatCurrency(c['totalAmount'])} • ${c['durationMonths'] ?? 0}m • ${c['totalMembers'] ?? 0} members'),
+                    subtitle: Text([
+                      formatCurrency(c['totalAmount']),
+                      '${c['durationMonths'] ?? 0}m',
+                      '${c['totalMembers'] ?? 0} members',
+                      if (chitTime.isNotEmpty) formatChitTime(chitTime),
+                    ].join(' • ')),
                     trailing: StatusChip(label: c['status']?.toString() ?? '', color: statusColor(c['status']?.toString())),
                   ),
                 );

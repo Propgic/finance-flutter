@@ -773,6 +773,8 @@ class _CorrectTermsSheet extends ConsumerStatefulWidget {
 class _CorrectTermsSheetState extends ConsumerState<_CorrectTermsSheet> {
   late String _loanType;
   late String _tenureType;
+  late String _interestType;
+  late bool _deductUpfront;
   late DateTime _startDate;
   late List<int> _collectionDays;
   final _principal = TextEditingController();
@@ -788,6 +790,8 @@ class _CorrectTermsSheetState extends ConsumerState<_CorrectTermsSheet> {
     final l = widget.loan;
     _loanType = l['loanType']?.toString() ?? 'PERSONAL';
     _tenureType = l['tenureType']?.toString() ?? 'MONTHS';
+    _interestType = l['interestType']?.toString() == 'FLAT' ? 'FLAT' : 'REDUCING';
+    _deductUpfront = l['deductInterestUpfront'] == true;
     _startDate = DateTime.tryParse(l['startDate']?.toString() ?? '') ?? DateTime.now();
     final days = (l['collectionDays'] is List)
         ? (l['collectionDays'] as List).map((e) => toNum(e).toInt()).toList()
@@ -824,6 +828,15 @@ class _CorrectTermsSheetState extends ConsumerState<_CorrectTermsSheet> {
   }
 
   bool get _isInstallment => _loanType == 'DAILY' || _loanType == 'WEEKLY';
+  bool get _isPeriodUnit => _tenureType == 'WEEKS' || _tenureType == 'DAYS';
+  String get _periodWord => _tenureType == 'WEEKS' ? 'week' : 'day';
+
+  String get _rateLabel {
+    if (_isInstallment) return 'Flat Interest Rate (% on principal)';
+    if (_isPeriodUnit && _interestType == 'REDUCING') return 'Interest Rate (% per $_periodWord)';
+    if (_isPeriodUnit) return 'Flat Interest Rate (% on principal)';
+    return 'Interest Rate (% p.a.)';
+  }
 
   void _onTypeChange(String? v) {
     if (v == null) return;
@@ -847,6 +860,9 @@ class _CorrectTermsSheetState extends ConsumerState<_CorrectTermsSheet> {
         if (_rate.text.trim().isNotEmpty) 'interestRate': double.tryParse(_rate.text.trim()),
         if (_tenure.text.trim().isNotEmpty) 'tenure': int.tryParse(_tenure.text.trim()),
         if (!_isInstallment) 'tenureType': _tenureType,
+        // Interest method applies to every term loan; backend normalizes DAILY/WEEKLY types.
+        if (!_isInstallment) 'interestType': _interestType,
+        if (!_isInstallment) 'deductInterestUpfront': _interestType == 'FLAT' && _deductUpfront,
         'startDate': formatInputDate(_startDate),
         if (_fee.text.trim().isNotEmpty) 'processingFee': double.tryParse(_fee.text.trim()),
         // Collection days only apply to DAILY/WEEKLY; null clears them for other types.
@@ -920,7 +936,7 @@ class _CorrectTermsSheetState extends ConsumerState<_CorrectTermsSheet> {
             TextFormField(
               controller: _rate,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Interest Rate (%)'),
+              decoration: InputDecoration(labelText: _rateLabel),
             ),
             const SizedBox(height: 10),
             Row(
@@ -945,12 +961,50 @@ class _CorrectTermsSheetState extends ConsumerState<_CorrectTermsSheet> {
                         DropdownMenuItem(value: 'MONTHS', child: Text('Months')),
                         DropdownMenuItem(value: 'YEARS', child: Text('Years')),
                       ],
-                      onChanged: (v) => setState(() => _tenureType = v ?? 'MONTHS'),
+                      onChanged: (v) => setState(() {
+                        _tenureType = v ?? 'MONTHS';
+                        // Sub-monthly collection is conventionally flat; monthly/yearly
+                        // reducing. The admin can still override the method below.
+                        _interestType = _isPeriodUnit ? 'FLAT' : 'REDUCING';
+                        if (_interestType != 'FLAT') _deductUpfront = false;
+                      }),
                     ),
                   ),
                 ],
               ],
             ),
+            if (!_isInstallment) ...[
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: _interestType,
+                decoration: const InputDecoration(labelText: 'Interest Calculation'),
+                items: const [
+                  DropdownMenuItem(value: 'REDUCING', child: Text('Reducing Balance (interest on outstanding)')),
+                  DropdownMenuItem(value: 'FLAT', child: Text('Flat Rate (interest on full principal)')),
+                ],
+                onChanged: (v) => setState(() {
+                  _interestType = v ?? 'REDUCING';
+                  if (_interestType != 'FLAT') _deductUpfront = false;
+                }),
+              ),
+              if (_isPeriodUnit && _interestType == 'REDUCING')
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Interest is charged on the outstanding balance each $_periodWord; '
+                    'the rate is applied per $_periodWord (not annualized).',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              if (_interestType == 'FLAT')
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Deduct interest upfront'),
+                  subtitle: const Text('Interest is taken out of the disbursed amount; EMIs repay principal only.'),
+                  value: _deductUpfront,
+                  onChanged: (v) => setState(() => _deductUpfront = v),
+                ),
+            ],
             const SizedBox(height: 4),
             ListTile(
               contentPadding: EdgeInsets.zero,

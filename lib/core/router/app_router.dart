@@ -78,12 +78,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       final auth = ref.read(authProvider);
       if (auth.loading) return null;
       final loggingIn = state.matchedLocation == '/login';
-      if (!auth.isAuthed && !loggingIn) return '/login';
+      // Adding an account is reachable while already signed in (it appends a
+      // second identity), so it's exempt from the authed→home redirect.
+      final addingAccount = state.matchedLocation == '/add-account';
+      if (!auth.isAuthed && !loggingIn && !addingAccount) return '/login';
       if (auth.isAuthed && loggingIn) return '/';
       return null;
     },
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
+      GoRoute(path: '/add-account', builder: (_, __) => const LoginPage(addMode: true)),
       ShellRoute(
         builder: (ctx, st, child) => AppShell(child: child),
         routes: [

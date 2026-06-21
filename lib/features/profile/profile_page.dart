@@ -9,6 +9,7 @@ import '../../core/auth/auth_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
 import '../app_shell.dart';
+import '../dashboard/dashboard_page.dart';
 import '../../core/widgets/app_bottom_nav.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
@@ -200,10 +201,20 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           const SizedBox(height: 18),
           OutlinedButton.icon(
             onPressed: () async {
-              final ok = await confirmDialog(context, message: 'Sign out of your account?', destructive: true, confirmText: 'Logout');
+              final ok = await confirmDialog(context, message: 'Sign out of this account?', destructive: true, confirmText: 'Logout');
               if (!ok) return;
               await ref.read(authProvider.notifier).logout();
-              if (context.mounted) context.go('/login');
+              if (!context.mounted) return;
+              // Signing out may fall back to another stored account rather than
+              // dropping all the way to the login screen.
+              if (ref.read(authProvider).isAuthed) {
+                ref.invalidate(dashboardProvider);
+                ref.invalidate(accountsProvider);
+                context.go('/dashboard');
+                showToast('Switched account');
+              } else {
+                context.go('/login');
+              }
             },
             icon: const Icon(Icons.logout, color: AppColors.danger),
             label: const Text('Logout', style: TextStyle(color: AppColors.danger)),
