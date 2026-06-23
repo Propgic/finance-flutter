@@ -390,12 +390,17 @@ class DashboardPage extends ConsumerWidget {
           final m = Map<String, dynamic>.from(c as Map);
           final cust = Map<String, dynamic>.from(m['customer'] ?? {});
           final loan = Map<String, dynamic>.from(m['loan'] ?? {});
+          final isChit = m['sourceType'] == 'CHITFUND';
+          final chit = Map<String, dynamic>.from(m['chitfund'] ?? {});
+          final ref = isChit
+              ? 'Chit ${chit['chitNumber'] ?? chit['name'] ?? ''}${m['monthNumber'] != null ? ' · M${m['monthNumber']}' : ''}'
+              : 'Loan #${loan['loanNumber'] ?? '-'}';
           return ListTile(
             contentPadding: EdgeInsets.zero,
             dense: true,
             leading: const Icon(Icons.shield_outlined, color: AppColors.warning),
             title: Text('${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}'.trim()),
-            subtitle: Text('Loan #${loan['loanNumber'] ?? '-'} · ${m['receiptNumber'] ?? '-'}', style: const TextStyle(fontSize: 11)),
+            subtitle: Text('$ref · ${m['receiptNumber'] ?? '-'}', style: const TextStyle(fontSize: 11)),
             trailing: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisAlignment: MainAxisAlignment.center,

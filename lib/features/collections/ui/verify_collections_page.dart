@@ -137,6 +137,8 @@ class _VerifyCollectionsPageState extends ConsumerState<VerifyCollectionsPage> {
   Widget _collectionCard(Map<String, dynamic> c) {
     final cust = Map<String, dynamic>.from(c['customer'] ?? {});
     final loan = Map<String, dynamic>.from(c['loan'] ?? {});
+    final isChit = c['sourceType'] == 'CHITFUND';
+    final chit = Map<String, dynamic>.from(c['chitfund'] ?? {});
     final collector = Map<String, dynamic>.from(c['collectedBy'] ?? {});
     final overdueEmis = (loan['emiSchedule'] as List?) ?? [];
     final overdueAmt = overdueEmis.fold<double>(0, (s, e) {
@@ -175,23 +177,39 @@ class _VerifyCollectionsPageState extends ConsumerState<VerifyCollectionsPage> {
                         runSpacing: 4,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          if (loan['loanType'] != null)
+                          if (isChit)
+                            _miniBadge('Chitfund', const Color(0xFF7C3AED))
+                          else if (loan['loanType'] != null)
                             _miniBadge(_loanTypeLabels[loan['loanType']?.toString()] ?? loan['loanType'].toString(), const Color(0xFF7C3AED)),
                           if (c['paymentMode'] != null)
                             _miniBadge(_paymentModeLabels[c['paymentMode']?.toString()] ?? c['paymentMode'].toString(), AppColors.primary),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Row(children: [
-                        Flexible(child: Text(loan['loanNumber']?.toString() ?? '', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis)),
-                        if (loan['id'] != null) ...[
-                          const SizedBox(width: 6),
-                          GestureDetector(
-                            onTap: () => context.push('/loans/${loan['id']}'),
-                            child: const Text('View Loan', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600)),
-                          ),
-                        ],
-                      ]),
+                      if (isChit)
+                        Row(children: [
+                          Flexible(child: Text(
+                            '${chit['chitNumber'] ?? chit['name'] ?? ''}${c['monthNumber'] != null ? ' · M${c['monthNumber']}' : ''}',
+                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis)),
+                          if (c['chitfundId'] != null) ...[
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () => context.push('/chitfunds/${c['chitfundId']}'),
+                              child: const Text('View Chit', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                            ),
+                          ],
+                        ])
+                      else
+                        Row(children: [
+                          Flexible(child: Text(loan['loanNumber']?.toString() ?? '', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis)),
+                          if (loan['id'] != null) ...[
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () => context.push('/loans/${loan['id']}'),
+                              child: const Text('View Loan', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                            ),
+                          ],
+                        ]),
                     ],
                   ),
                 ),

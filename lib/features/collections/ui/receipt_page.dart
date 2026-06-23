@@ -103,6 +103,8 @@ class _ReceiptPageState extends ConsumerState<ReceiptPage> {
           final collection = Map<String, dynamic>.from(r['collection'] ?? r);
           final cust = Map<String, dynamic>.from(collection['customer'] ?? {});
           final loan = Map<String, dynamic>.from(collection['loan'] ?? {});
+          final isChit = collection['sourceType'] == 'CHITFUND';
+          final chit = Map<String, dynamic>.from(collection['chitfund'] ?? {});
           final orgRaw = r['org'] ?? r['organization'];
           final org = Map<String, dynamic>.from(orgRaw is Map ? orgRaw : {});
           final auth = ref.watch(authProvider);
@@ -159,14 +161,22 @@ class _ReceiptPageState extends ConsumerState<ReceiptPage> {
                 child: Column(
                   children: [
                     KeyValueRow(label: 'Customer', value: '${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}'.trim()),
-                    KeyValueRow(label: 'Loan #', value: loan['loanNumber']?.toString() ?? '-'),
+                    if (isChit) ...[
+                      KeyValueRow(label: 'Chit #', value: (chit['chitNumber'] ?? chit['name'])?.toString() ?? '-'),
+                      if (collection['monthNumber'] != null)
+                        KeyValueRow(label: 'Month', value: '#${collection['monthNumber']}'),
+                    ] else
+                      KeyValueRow(label: 'Loan #', value: loan['loanNumber']?.toString() ?? '-'),
                     KeyValueRow(label: 'Date', value: formatDateTime(collection['collectedAt'])),
                     KeyValueRow(label: 'Payment Mode', value: collection['paymentMode']?.toString() ?? '-'),
                     if (collection['paymentReference'] != null)
                       KeyValueRow(label: 'Reference', value: collection['paymentReference'].toString()),
                     KeyValueRow(label: 'Status', value: collection['verificationStatus']?.toString() ?? '-'),
                     KeyValueRow(label: 'Collected By', value: (collection['collectedBy'] is Map ? collection['collectedBy']['name']?.toString() : null) ?? '-'),
-                    KeyValueRow(label: 'Total Paid on Loan', value: formatCurrency(r['totalPaidOnLoan'])),
+                    KeyValueRow(
+                      label: isChit ? 'Total Paid by Member' : 'Total Paid on Loan',
+                      value: formatCurrency(isChit ? r['totalPaidByMember'] : r['totalPaidOnLoan']),
+                    ),
                   ],
                 ),
               ),

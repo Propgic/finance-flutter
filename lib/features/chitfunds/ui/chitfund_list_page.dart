@@ -49,6 +49,7 @@ class _ChitfundListPageState extends ConsumerState<ChitfundListPage> {
               itemBuilder: (ctx, i) {
                 final c = Map<String, dynamic>.from(items[i] as Map);
                 final chitTime = c['chitTime']?.toString().trim() ?? '';
+                final officer = Map<String, dynamic>.from(c['assignedTo'] ?? {})['name']?.toString() ?? '';
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   child: ListTile(
@@ -59,6 +60,7 @@ class _ChitfundListPageState extends ConsumerState<ChitfundListPage> {
                       '${c['durationMonths'] ?? 0}m',
                       '${c['totalMembers'] ?? 0} members',
                       if (chitTime.isNotEmpty) formatChitTime(chitTime),
+                      if (officer.isNotEmpty) '👤 $officer',
                     ].join(' • ')),
                     trailing: StatusChip(label: c['status']?.toString() ?? '', color: statusColor(c['status']?.toString())),
                   ),

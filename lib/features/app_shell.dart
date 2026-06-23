@@ -26,9 +26,12 @@ class NavItem {
   final IconData icon;
   final String route;
   final String? featureFlag;
+  // Visible when ANY of these feature flags is enabled (e.g. Collections serves
+  // both loans and chitfunds). Takes precedence over featureFlag when set.
+  final List<String>? featureAny;
   final String? permission;
   final String? role;
-  const NavItem(this.label, this.icon, this.route, {this.featureFlag, this.permission, this.role});
+  const NavItem(this.label, this.icon, this.route, {this.featureFlag, this.featureAny, this.permission, this.role});
 }
 
 const _navItems = <NavItem>[
@@ -37,7 +40,7 @@ const _navItems = <NavItem>[
   NavItem('Loans', Icons.request_quote_outlined, '/loans', featureFlag: 'enableLoans', permission: 'loans.view'),
   NavItem('Assign Loans', Icons.manage_accounts_outlined, '/assign-loans', featureFlag: 'enableLoans', permission: 'loans.assign'),
   NavItem('Loan Groups', Icons.groups_outlined, '/loan-groups', featureFlag: 'enableGroupLoan', permission: 'loans.view'),
-  NavItem('Collections', Icons.payments_outlined, '/collections', featureFlag: 'enableLoans', permission: 'collections.view'),
+  NavItem('Collections', Icons.payments_outlined, '/collections', featureAny: ['enableLoans', 'enableChitfund'], permission: 'collections.view'),
   NavItem('Savings', Icons.savings_outlined, '/savings', featureFlag: 'enableSavings', permission: 'savings.view'),
   NavItem('Chitfunds', Icons.account_balance_wallet_outlined, '/chitfunds', featureFlag: 'enableChitfund', permission: 'chitfunds.view'),
   NavItem('Investors', Icons.trending_up, '/investors', featureFlag: 'enableInvestments', permission: 'investors.view'),
@@ -62,6 +65,7 @@ class AppDrawer extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authProvider);
     final items = _navItems.where((it) {
+      if (it.featureAny != null && !it.featureAny!.any((f) => auth.org?.feature(f) == true)) return false;
       if (it.featureFlag != null && auth.org?.feature(it.featureFlag!) != true) return false;
       if (it.permission != null && !auth.hasPermission(it.permission!)) return false;
       if (it.role != null && !auth.hasRole(it.role!)) return false;

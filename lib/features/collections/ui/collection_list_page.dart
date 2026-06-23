@@ -109,6 +109,8 @@ class _CollectionListPageState extends ConsumerState<CollectionListPage> {
       final res = await ref.read(collectionRepoProvider).list(
         page: _page, search: _search, fromDate: _dateFrom, toDate: _dateTo, verificationStatus: _verification,
         loanType: _loanType, collectedById: _collectedById,
+        // Show loan + chit collections together (chit installments share this module).
+        sourceType: 'ALL',
       );
       final rawData = res['data'];
       final data = rawData is List
@@ -361,13 +363,18 @@ class _CollectionListPageState extends ConsumerState<CollectionListPage> {
                         final c = _items[i];
                         final cust = Map<String, dynamic>.from(c['customer'] ?? {});
                         final loan = Map<String, dynamic>.from(c['loan'] ?? {});
+                        final isChit = c['sourceType'] == 'CHITFUND';
+                        final chit = Map<String, dynamic>.from(c['chitfund'] ?? {});
+                        final ref = isChit
+                            ? '${chit['chitNumber'] ?? chit['name'] ?? 'Chit'}${c['monthNumber'] != null ? ' · M${c['monthNumber']}' : ''}'
+                            : (loan['loanNumber']?.toString() ?? '');
                         return Card(
                           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           child: ListTile(
                             onTap: () => context.push('/collections/${c['id']}/receipt'),
-                            leading: const Icon(Icons.receipt_long_outlined, color: AppColors.accent),
+                            leading: Icon(isChit ? Icons.savings_outlined : Icons.receipt_long_outlined, color: AppColors.accent),
                             title: Text('${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}'.trim()),
-                            subtitle: Text('${loan['loanNumber'] ?? ''} • ${formatDateTime(c['collectedAt'])}'),
+                            subtitle: Text('$ref • ${formatDateTime(c['collectedAt'])}'),
                             trailing: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.end,

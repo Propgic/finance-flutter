@@ -6,6 +6,7 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/update/update_gate.dart';
 import 'core/maintenance/maintenance_gate.dart';
+import 'core/broadcast/broadcast_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,9 +28,13 @@ class FinanceApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       routerConfig: router,
-      // Maintenance blocker sits above the version gate and every route.
+      // Maintenance blocker sits above the version gate and every route; the
+      // broadcast banner floats over the app below both (so a forced update or
+      // maintenance screen replaces it rather than stacking on top).
       builder: (context, child) => MaintenanceGate(
-        child: UpdateGate(child: child ?? const SizedBox.shrink()),
+        child: UpdateGate(
+          child: BroadcastGate(child: child ?? const SizedBox.shrink()),
+        ),
       ),
     );
   }

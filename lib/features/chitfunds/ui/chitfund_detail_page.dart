@@ -8,6 +8,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../data/chitfund_repo.dart';
 import '../../customers/data/customer_repo.dart';
+import 'field_officer_picker.dart';
 
 final chitfundDetailProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, id) async {
   return ref.read(chitfundRepoProvider).get(id);
@@ -79,6 +80,24 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
     } on ApiException catch (e) { showToast(e.message, error: true); }
   }
 
+  Future<void> _assignOfficer() async {
+    final picked = await showFieldOfficerPicker(context, ref);
+    if (picked == null) return;
+    try {
+      await ref.read(chitfundRepoProvider).assign(widget.id, picked['id'].toString());
+      ref.invalidate(chitfundDetailProvider(widget.id));
+      showToast('Field officer assigned');
+    } on ApiException catch (e) { showToast(e.message, error: true); }
+  }
+
+  Future<void> _unassignOfficer() async {
+    try {
+      await ref.read(chitfundRepoProvider).assign(widget.id, null);
+      ref.invalidate(chitfundDetailProvider(widget.id));
+      showToast('Field officer unassigned');
+    } on ApiException catch (e) { showToast(e.message, error: true); }
+  }
+
   Future<void> _doAction(Future<void> Function() fn, String msg) async {
     try {
       await fn();
@@ -134,6 +153,12 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
           case 'edit':
             _editChitfund(c);
             break;
+          case 'assign':
+            _assignOfficer();
+            break;
+          case 'unassign':
+            _unassignOfficer();
+            break;
           case 'record_payment':
             _openPayment(c);
             break;
@@ -149,6 +174,8 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
         if (status == 'UPCOMING') const PopupMenuItem(value: 'start', child: Text('Start')),
         // Editable at any status; started chits get a warning in the dialog.
         const PopupMenuItem(value: 'edit', child: Text('Edit chitfund')),
+        PopupMenuItem(value: 'assign', child: Text(c['assignedTo'] == null ? 'Assign field officer' : 'Reassign field officer')),
+        if (c['assignedTo'] != null) const PopupMenuItem(value: 'unassign', child: Text('Unassign field officer')),
         if (status == 'UPCOMING') const PopupMenuItem(value: 'add_member', child: Text('Add Member')),
         if (status == 'ACTIVE') const PopupMenuItem(value: 'record_payment', child: Text('Record Payment')),
         if (status == 'ACTIVE') const PopupMenuItem(value: 'final_dues', child: Text('Final Dues')),
@@ -205,6 +232,10 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
                 label: 'Dividend Type',
                 value: dividendType +
                     (dividendType == 'SPLIT' ? ' (${c['splitAudience'] == 'NON_WINNERS' ? 'Non-winners' : 'All'})' : ''),
+              ),
+              KeyValueRow(
+                label: 'Field Officer',
+                value: Map<String, dynamic>.from(c['assignedTo'] ?? {})['name']?.toString() ?? 'Unassigned',
               ),
               if (dividendType == 'ACCUMULATED')
                 KeyValueRow(label: 'Surplus Pool', value: formatCurrency(c['surplusPool'] ?? 0), valueColor: AppColors.warning),
@@ -969,7 +1000,9 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
       // already made a partial payment this month, in which case they only owe the rest.
       final alreadyPaid = _monthPayments
           .map((p) => p as Map)
-          .where((p) => p['chitfundMemberId']?.toString() == memberId && (p['type']?.toString() ?? 'COLLECTION') != 'PAYOUT')
+          .where((p) => p['chitfundMemberId']?.toString() == memberId
+              && (p['type']?.toString() ?? 'COLLECTION') != 'PAYOUT'
+              && p['verificationStatus']?.toString() != 'REJECTED')
           .fold<double>(0, (sum, p) => sum + toNum(p['amount']).toDouble());
       final remaining = toNum(due['expectedAmount']).toDouble() - alreadyPaid;
       _amountC.text = (remaining < 0 ? 0 : remaining).toStringAsFixed(2);
@@ -990,7 +1023,7 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
         'reference': _refC.text.isEmpty ? null : _refC.text,
         'paidDate': formatInputDate(_paidDate),
       });
-      showToast('Payment recorded');
+      showToast('Payment recorded — pending verification');
       widget.onRecorded();
       _refC.text = '';
       await _load(_month); // refresh so the paid member drops off the list
@@ -1008,7 +1041,8 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
     // record for the month they won but still owes their own installment, so exclude
     // PAYOUT records here — otherwise the winner is dropped from the picker.
     final collectionPayments = _monthPayments
-        .where((p) => ((p as Map)['type']?.toString() ?? 'COLLECTION') != 'PAYOUT')
+        .where((p) => ((p as Map)['type']?.toString() ?? 'COLLECTION') != 'PAYOUT'
+            && p['verificationStatus']?.toString() != 'REJECTED')
         .toList();
     final paidByMember = <String, double>{};
     for (final p in collectionPayments) {

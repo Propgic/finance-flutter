@@ -20,6 +20,9 @@ class ChitfundRepo {
 
   Future<void> create(Map<String, dynamic> body) async => api.post('/chitfunds', data: body);
   Future<void> update(String id, Map<String, dynamic> body) async => api.put('/chitfunds/$id', data: body);
+  // Assign / reassign / unassign the chit's field officer. Pass null to clear it.
+  Future<void> assign(String id, String? fieldOfficerId) async =>
+      api.patch('/chitfunds/$id/assign', data: {'assignedToId': fieldOfficerId});
   Future<void> start(String id) async => api.patch('/chitfunds/$id/start');
   Future<void> complete(String id) async => api.patch('/chitfunds/$id/complete');
 

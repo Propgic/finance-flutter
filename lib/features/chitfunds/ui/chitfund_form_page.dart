@@ -5,6 +5,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../data/chitfund_repo.dart';
+import 'field_officer_picker.dart';
 
 class ChitfundFormPage extends ConsumerStatefulWidget {
   const ChitfundFormPage({super.key});
@@ -22,6 +23,12 @@ class _ChitfundFormPageState extends ConsumerState<ChitfundFormPage> {
   final _commission = TextEditingController(text: '5');
   DateTime _start = DateTime.now();
   bool _saving = false;
+  Map<String, dynamic>? _assignee; // selected field officer, or null
+
+  Future<void> _pickAssignee() async {
+    final picked = await showFieldOfficerPicker(context, ref);
+    if (picked != null) setState(() => _assignee = picked);
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
@@ -35,6 +42,7 @@ class _ChitfundFormPageState extends ConsumerState<ChitfundFormPage> {
         'durationMonths': int.tryParse(_duration.text),
         'startDate': formatInputDate(_start),
         'commission': double.tryParse(_commission.text) ?? 5,
+        if (_assignee != null) 'assignedToId': _assignee!['id'],
       });
       showToast('Chitfund created');
       if (mounted) context.go('/chitfunds');
@@ -76,6 +84,16 @@ class _ChitfundFormPageState extends ConsumerState<ChitfundFormPage> {
                       final d = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)), initialDate: _start);
                       if (d != null) setState(() => _start = d);
                     },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.assignment_ind_outlined),
+                    title: Text(_assignee == null ? 'Assign to Field Officer' : _assignee!['name']?.toString() ?? ''),
+                    subtitle: _assignee == null ? const Text('Optional') : Text(_assignee!['phone']?.toString() ?? ''),
+                    trailing: _assignee == null
+                        ? const Icon(Icons.chevron_right)
+                        : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _assignee = null)),
+                    onTap: _pickAssignee,
                   ),
                 ],
               ),
