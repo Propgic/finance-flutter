@@ -6,6 +6,9 @@ class AuthUser {
   final String? phone;
   final String? photo;
   final List<String> permissions;
+  // Resolved list of chitfund-detail / dashboard UI keys the server hides for this
+  // user's role (computed from OrgSettings.uiVisibility). Drives [AuthState.isHidden].
+  final List<String> hiddenUI;
 
   AuthUser({
     required this.id,
@@ -15,6 +18,7 @@ class AuthUser {
     this.phone,
     this.photo,
     this.permissions = const [],
+    this.hiddenUI = const [],
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> j) => AuthUser(
@@ -25,6 +29,7 @@ class AuthUser {
         phone: j['phone'],
         photo: j['photo'],
         permissions: (j['permissions'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+        hiddenUI: (j['hiddenUI'] as List?)?.map((e) => e.toString()).toList() ?? const [],
       );
 
   Map<String, dynamic> toJson() => {
@@ -35,6 +40,7 @@ class AuthUser {
         'phone': phone,
         'photo': photo,
         'permissions': permissions,
+        'hiddenUI': hiddenUI,
       };
 }
 
@@ -135,4 +141,13 @@ class AuthState {
   }
 
   bool hasRole(String role) => user?.role == role;
+
+  /// Whether a chitfund-detail / dashboard UI element is hidden for this user's
+  /// role (per OrgSettings.uiVisibility, resolved server-side into `user.hiddenUI`).
+  /// Org admins always see everything. Mirrors web's AuthContext.isHidden(key).
+  bool isHidden(String key) {
+    if (user == null) return false;
+    if (user!.role == 'ORG_ADMIN') return false;
+    return user!.hiddenUI.contains(key);
+  }
 }

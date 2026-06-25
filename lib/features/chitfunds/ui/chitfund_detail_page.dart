@@ -9,6 +9,7 @@ import '../../../core/widgets/common.dart';
 import '../data/chitfund_repo.dart';
 import '../../customers/data/customer_repo.dart';
 import 'field_officer_picker.dart';
+import 'chitfund_timeline.dart';
 
 final chitfundDetailProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, id) async {
   return ref.read(chitfundRepoProvider).get(id);
@@ -27,6 +28,27 @@ final chitfundPayoutsProvider = FutureProvider.autoDispose.family<List<dynamic>,
 });
 
 const _paymentModes = ['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE', 'ONLINE'];
+const _paymentModeLabels = {
+  'CASH': 'Cash', 'UPI': 'UPI', 'BANK_TRANSFER': 'Bank Transfer', 'CHEQUE': 'Cheque', 'ONLINE': 'Online',
+};
+
+// Who may delete a chit collection from the Payments tab, and until when (the backend
+// enforces the same rule in deletePayment):
+//   • PENDING  — deletable by anyone who can record/manage payments.
+//   • VERIFIED — only ORG_ADMIN / MANAGER, within 24h of verification.
+//   • REJECTED — not deletable here.
+const _deleteVerifiedWindowMs = 24 * 60 * 60 * 1000;
+bool _canDeletePayment(Map<String, dynamic> row, String? role) {
+  final status = row['verificationStatus']?.toString() ?? 'PENDING';
+  if (status == 'PENDING') return true;
+  if (status == 'VERIFIED' && (role == 'ORG_ADMIN' || role == 'MANAGER')) {
+    final va = row['verifiedAt'];
+    final t = va == null ? null : DateTime.tryParse(va.toString());
+    if (t == null) return false;
+    return DateTime.now().difference(t).inMilliseconds <= _deleteVerifiedWindowMs;
+  }
+  return false;
+}
 
 class ChitfundDetailPage extends ConsumerStatefulWidget {
   final String id;
@@ -36,14 +58,65 @@ class ChitfundDetailPage extends ConsumerStatefulWidget {
 }
 
 class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 5, vsync: this);
+  // Visible tabs in display order, with per-role hidden ones (Settings → Chitfund
+  // Settings) filtered out. `info` is always shown; the rest gate on chitfund.tab.<key>.
+  // Landing on the first visible tab gives web's "fall back to first visible tab".
+  late final List<String> _tabKeys;
+  late final TabController _tabs;
+  // Bumped on every refresh so the embedded ChitfundTimeline refetches.
+  int _reloadKey = 0;
+
+  // Payments-tab filters (client-side over the loaded list). Empty string = "All".
+  final _paySearchC = TextEditingController();
+  String _payType = '';
+  String _payStatus = '';
+  String _payMonth = '';
+  String _payMode = '';
+  bool _payMonthDefaulted = false;
 
   @override
-  void dispose() { _tabs.dispose(); super.dispose(); }
+  void initState() {
+    super.initState();
+    final auth = ref.read(authProvider);
+    const order = ['timeline', 'info', 'members', 'auctions', 'payments', 'payouts'];
+    _tabKeys = order.where((k) => !auth.isHidden('chitfund.tab.$k')).toList();
+    _tabs = TabController(length: _tabKeys.length, vsync: this);
+    _paySearchC.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() { _tabs.dispose(); _paySearchC.dispose(); super.dispose(); }
 
   bool get _canManage {
     final auth = ref.read(authProvider);
     return auth.hasPermission('chitfunds.create') || auth.hasRole('ORG_ADMIN') || auth.hasRole('MANAGER');
+  }
+
+  String _tabLabel(String k) => {
+        'timeline': 'Timeline',
+        'info': 'Info',
+        'members': 'Members',
+        'auctions': 'Auctions',
+        'payments': 'Payments',
+        'payouts': 'Payouts',
+      }[k] ?? k;
+
+  Widget _tabContent(String k, Map<String, dynamic> c) {
+    switch (k) {
+      case 'timeline':
+        return ChitfundTimeline(chitfundId: widget.id, reloadKey: _reloadKey);
+      case 'info':
+        return _infoTab(c);
+      case 'members':
+        return _membersTab(c);
+      case 'auctions':
+        return _auctionsTab(c);
+      case 'payments':
+        return _paymentsTab(c);
+      case 'payouts':
+        return _payoutsTab(c);
+    }
+    return const SizedBox.shrink();
   }
 
   Map<String, Map<String, dynamic>> _memberById() {
@@ -63,6 +136,7 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
     ref.invalidate(chitfundAuctionsProvider(widget.id));
     ref.invalidate(chitfundPaymentsProvider(widget.id));
     ref.invalidate(chitfundPayoutsProvider(widget.id));
+    if (mounted) setState(() => _reloadKey++);
   }
 
   Future<void> _addMember() async {
@@ -112,9 +186,11 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chitfund'),
-        bottom: TabBar(controller: _tabs, isScrollable: true, tabs: const [
-          Tab(text: 'Info'), Tab(text: 'Members'), Tab(text: 'Auctions'), Tab(text: 'Payments'), Tab(text: 'Payouts'),
-        ]),
+        bottom: TabBar(
+          controller: _tabs,
+          isScrollable: true,
+          tabs: _tabKeys.map((k) => Tab(text: _tabLabel(k))).toList(),
+        ),
         actions: [
           data.maybeWhen(
             data: (c) => _canManage ? _menu(c) : const SizedBox.shrink(),
@@ -127,17 +203,21 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
         error: (e, _) => ErrorView(message: e.toString()),
         data: (c) => TabBarView(
           controller: _tabs,
-          children: [_infoTab(c), _membersTab(c), _auctionsTab(c), _paymentsTab(c), _payoutsTab(c)],
+          children: _tabKeys.map((k) => _tabContent(k, c)).toList(),
         ),
       ),
     );
   }
 
   Widget _menu(Map<String, dynamic> c) {
+    final auth = ref.read(authProvider);
     final status = c['status']?.toString();
     final dividendType = c['dividendType']?.toString() ?? 'SPLIT';
     final surplusOverflow = dividendType == 'ACCUMULATED' &&
         toNum(c['surplusPool']) >= toNum(c['totalAmount']);
+    // Per-role action visibility (Settings → Chitfund Settings).
+    final showEdit = !auth.isHidden('chitfund.edit');
+    final showReassign = !auth.isHidden('chitfund.reassign');
     return PopupMenuButton<String>(
       onSelected: (v) {
         switch (v) {
@@ -173,9 +253,10 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
       itemBuilder: (_) => [
         if (status == 'UPCOMING') const PopupMenuItem(value: 'start', child: Text('Start')),
         // Editable at any status; started chits get a warning in the dialog.
-        const PopupMenuItem(value: 'edit', child: Text('Edit chitfund')),
-        PopupMenuItem(value: 'assign', child: Text(c['assignedTo'] == null ? 'Assign field officer' : 'Reassign field officer')),
-        if (c['assignedTo'] != null) const PopupMenuItem(value: 'unassign', child: Text('Unassign field officer')),
+        if (showEdit) const PopupMenuItem(value: 'edit', child: Text('Edit chitfund')),
+        if (showReassign)
+          PopupMenuItem(value: 'assign', child: Text(c['assignedTo'] == null ? 'Assign field officer' : 'Reassign field officer')),
+        if (showReassign && c['assignedTo'] != null) const PopupMenuItem(value: 'unassign', child: Text('Unassign field officer')),
         if (status == 'UPCOMING') const PopupMenuItem(value: 'add_member', child: Text('Add Member')),
         if (status == 'ACTIVE') const PopupMenuItem(value: 'record_payment', child: Text('Record Payment')),
         if (status == 'ACTIVE') const PopupMenuItem(value: 'final_dues', child: Text('Final Dues')),
@@ -188,6 +269,7 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
 
   Widget _infoTab(Map<String, dynamic> c) {
     final dividendType = c['dividendType']?.toString() ?? 'SPLIT';
+    final showTotalCollected = !ref.read(authProvider).isHidden('chitfund.totalCollected');
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
@@ -227,7 +309,8 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
               KeyValueRow(label: 'Commission', value: '${c['commission'] ?? 0}%'),
               KeyValueRow(label: 'Start Date', value: formatDate(c['startDate'])),
               KeyValueRow(label: 'Current Month', value: '${c['currentMonth'] ?? 0} / ${c['durationMonths']}'),
-              KeyValueRow(label: 'Total Collected', value: formatCurrency(c['totalCollected'] ?? 0)),
+              if (showTotalCollected)
+                KeyValueRow(label: 'Total Collected', value: formatCurrency(c['totalCollected'] ?? 0)),
               KeyValueRow(
                 label: 'Dividend Type',
                 value: dividendType +
@@ -262,6 +345,8 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
             final hasWon = mem['hasWonAuction'] == true;
             return Card(
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              // Tint the auction winner's row so it stands out (mirrors web).
+              color: hasWon ? AppColors.orange.withValues(alpha: 0.10) : null,
               child: ListTile(
                 leading: Avatar(url: cust['photo']?.toString(), name: '${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}'),
                 title: Text('#${mem['ticketNumber'] ?? '-'} ${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}'.trim()),
@@ -340,7 +425,7 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
                       IconButton(
                         tooltip: 'Conduct auction',
                         icon: const Icon(Icons.gavel, color: AppColors.primary),
-                        onPressed: () => _recordAuction(au['id'].toString()),
+                        onPressed: () => _recordAuction(c, au['id'].toString()),
                       ),
                     if (canReverse)
                       IconButton(
@@ -379,7 +464,7 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
     } on ApiException catch (e) { showToast(e.message, error: true); }
   }
 
-  Future<void> _recordAuction(String auctionId) async {
+  Future<void> _recordAuction(Map<String, dynamic> c, String auctionId) async {
     final members = await ref.read(chitfundRepoProvider).members(widget.id);
     // Only members who have not yet won are eligible.
     final eligible = members.where((m) => (m as Map)['hasWonAuction'] != true).toList();
@@ -387,6 +472,8 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
       if (mounted) showToast('No eligible members', error: true);
       return;
     }
+    final isDip = (c['dividendType']?.toString() ?? 'SPLIT') == 'DIP';
+    final chitValue = toNum(c['totalAmount']).toDouble();
     Map<String, dynamic>? selected;
     final bidController = TextEditingController();
     final ok = await showDialog<bool>(
@@ -410,7 +497,18 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
                     onChanged: (v) => setState(() => selected = v),
                   ),
                   const SizedBox(height: 10),
-                  TextField(controller: bidController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Bid Amount')),
+                  // For DIP the field is the GROSS payout the winner receives (read off the
+                  // fixed dip schedule); otherwise it's the winning bid (amount forgone).
+                  TextField(
+                    controller: bidController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: isDip ? 'Payout Amount (optional)' : 'Winning Bid Amount',
+                      hintText: isDip
+                          ? 'Defaults to chit value (${formatCurrency(chitValue)}) — can exceed it'
+                          : 'Amount the winner forgoes',
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -423,12 +521,32 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
       },
     );
     if (ok != true || selected == null) return;
+
+    // The backend takes a SIGNED bid where payout = chitValue - bid.
+    final rawText = bidController.text.trim();
+    double bid;
+    if (isDip) {
+      // Blank → pay the full chit value (pure lottery). A payout above chit value
+      // (month 13+) yields a negative bid, which the backend accepts.
+      final payout = rawText.isEmpty ? chitValue : (double.tryParse(rawText) ?? -1);
+      if (payout <= 0) { showToast('Enter a valid payout amount', error: true); return; }
+      if (payout > 2 * chitValue) { showToast("Payout can't exceed ${formatCurrency(2 * chitValue)}", error: true); return; }
+      bid = chitValue - payout;
+    } else {
+      // SPLIT / ACCUMULATED: the field is the winning bid (amount the winner forgoes).
+      if (rawText.isEmpty) { showToast('Enter bid amount', error: true); return; }
+      bid = double.tryParse(rawText) ?? -1;
+      if (bid < 0 || bid > chitValue) {
+        showToast('Bid must be between 0 and ${formatCurrency(chitValue)}', error: true);
+        return;
+      }
+    }
     try {
       await ref.read(chitfundRepoProvider).recordAuction(
         widget.id,
         auctionId,
         winnerMemberId: selected!['id'].toString(),
-        bidAmount: double.tryParse(bidController.text) ?? 0,
+        bidAmount: bid,
       );
       _refreshAll();
       showToast('Auction recorded');
@@ -496,53 +614,209 @@ class _ChitfundDetailPageState extends ConsumerState<ChitfundDetailPage> with Si
 
   Widget _paymentsTab(Map<String, dynamic> c) {
     final p = ref.watch(chitfundPaymentsProvider(widget.id));
-    final canDelete = _canManage && c['status'] != 'COMPLETED';
+    final role = ref.read(authProvider).user?.role;
+    final notCompleted = c['status'] != 'COMPLETED';
     final memberById = _memberById();
     return p.when(
       loading: () => const LoadingView(),
       error: (e, _) => ErrorView(message: e.toString()),
-      data: (items) {
-        if (items.isEmpty) return const EmptyView(message: 'No payments yet');
-        return ListView.builder(
-          itemCount: items.length,
-          itemBuilder: (ctx, i) {
-            final pm = Map<String, dynamic>.from(items[i] as Map);
-            final type = pm['type']?.toString() ?? 'COLLECTION';
-            // listPayments returns raw rows (no relation) — resolve the name from the members list.
-            final mem = memberById[pm['chitfundMemberId']?.toString()];
-            final cust = mem != null && mem['customer'] != null ? Map<String, dynamic>.from(mem['customer'] as Map) : {};
-            final ticket = mem != null ? '#${mem['ticketNumber']} ' : '';
-            final name = '$ticket${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}'.trim();
-            final isCollection = type == 'COLLECTION';
-            return Card(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: ListTile(
-                title: Row(
-                  children: [
-                    Expanded(child: Text('Month ${pm['monthNumber']}${name.isNotEmpty ? ' - $name' : ''}')),
-                    StatusChip(label: type, color: type == 'PAYOUT' ? AppColors.info : AppColors.primary),
-                  ],
-                ),
-                subtitle: Text(
-                  '${pm['paymentMode'] ?? '-'} · ${formatDate(pm['paidDate'] ?? pm['paymentDate'])}'
-                  '${pm['reference'] != null ? ' · ${pm['reference']}' : ''}',
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(formatCurrency(pm['amount']), style: const TextStyle(fontWeight: FontWeight.w600)),
-                    if (canDelete && isCollection)
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
-                        onPressed: () => _deletePayment(pm),
-                      ),
-                  ],
-                ),
-              ),
-            );
-          },
+      data: (raw) {
+        final all = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+
+        // Default the month filter to the chit's current month on first load (once),
+        // so the tab opens on the active month rather than the whole history.
+        if (!_payMonthDefaulted) {
+          final cur = toNum(c['currentMonth']).toInt();
+          _payMonthDefaulted = true;
+          if (cur > 0) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() => _payMonth = '$cur');
+            });
+          }
+        }
+
+        // Distinct months / modes present, for the filter dropdowns. Always offer the
+        // current month even with no payments yet.
+        final months = <int>{};
+        for (final r in all) {
+          if (r['monthNumber'] != null) months.add(toNum(r['monthNumber']).toInt());
+        }
+        final cur = toNum(c['currentMonth']).toInt();
+        if (cur > 0) months.add(cur);
+        final monthList = months.toList()..sort((a, b) => b.compareTo(a));
+        final modes = <String>{};
+        for (final r in all) {
+          final m = r['paymentMode']?.toString();
+          if (m != null && m.isNotEmpty) modes.add(m);
+        }
+
+        final q = _paySearchC.text.trim().toLowerCase();
+        final filtered = all.where((row) {
+          if (_payType.isNotEmpty && (row['type']?.toString() ?? 'COLLECTION') != _payType) return false;
+          final status = (row['verificationStatus'] ?? row['status'] ?? 'PENDING').toString();
+          if (_payStatus.isNotEmpty && status != _payStatus) return false;
+          if (_payMonth.isNotEmpty && '${toNum(row['monthNumber']).toInt()}' != _payMonth) return false;
+          if (_payMode.isNotEmpty && (row['paymentMode']?.toString() ?? '') != _payMode) return false;
+          if (q.isNotEmpty) {
+            final mem = memberById[row['chitfundMemberId']?.toString()];
+            final cust = mem != null && mem['customer'] is Map ? Map<String, dynamic>.from(mem['customer'] as Map) : const {};
+            final name = '${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}';
+            final ticket = mem != null ? '#${mem['ticketNumber']}' : '';
+            final hay = '$name $ticket ${row['reference'] ?? ''} ${row['receiptNumber'] ?? ''}'.toLowerCase();
+            if (!hay.contains(q)) return false;
+          }
+          return true;
+        }).toList();
+        final filtersActive = _paySearchC.text.isNotEmpty || _payType.isNotEmpty
+            || _payStatus.isNotEmpty || _payMonth.isNotEmpty || _payMode.isNotEmpty;
+
+        return Column(
+          children: [
+            _paymentsFilterBar(monthList, modes.toList(), filtered.length, all.length, filtersActive),
+            Expanded(
+              child: all.isEmpty
+                  ? const EmptyView(message: 'No payments yet')
+                  : filtered.isEmpty
+                      ? EmptyView(message: filtersActive ? 'No payments match the filters' : 'No payments yet')
+                      : ListView.builder(
+                          itemCount: filtered.length,
+                          itemBuilder: (ctx, i) {
+                            final pm = filtered[i];
+                            final type = pm['type']?.toString() ?? 'COLLECTION';
+                            // listPayments returns raw rows (no relation) — resolve the name from members.
+                            final mem = memberById[pm['chitfundMemberId']?.toString()];
+                            final cust = mem != null && mem['customer'] != null ? Map<String, dynamic>.from(mem['customer'] as Map) : {};
+                            final ticket = mem != null ? '#${mem['ticketNumber']} ' : '';
+                            final name = '$ticket${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}'.trim();
+                            final isCollection = type == 'COLLECTION';
+                            final status = (pm['verificationStatus'] ?? pm['status'] ?? 'PENDING').toString();
+                            final showDelete = isCollection && notCompleted && _canManage && _canDeletePayment(pm, role);
+                            return Card(
+                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              child: ListTile(
+                                title: Row(
+                                  children: [
+                                    Expanded(child: Text('Month ${pm['monthNumber']}${name.isNotEmpty ? ' - $name' : ''}')),
+                                    StatusChip(label: type, color: type == 'PAYOUT' ? AppColors.info : AppColors.primary),
+                                  ],
+                                ),
+                                subtitle: Text(
+                                  '$status · ${pm['paymentMode'] ?? '-'} · ${formatDate(pm['paidDate'] ?? pm['paymentDate'])}'
+                                  '${pm['reference'] != null ? ' · ${pm['reference']}' : ''}',
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(formatCurrency(pm['amount']), style: const TextStyle(fontWeight: FontWeight.w600)),
+                                    if (showDelete)
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
+                                        onPressed: () => _deletePayment(pm),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+            ),
+          ],
         );
       },
+    );
+  }
+
+  Widget _paymentsFilterBar(List<int> months, List<String> modes, int shown, int total, bool filtersActive) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _paySearchC,
+            decoration: InputDecoration(
+              isDense: true,
+              prefixIcon: const Icon(Icons.search, size: 20),
+              hintText: 'Search member, ticket, reference…',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _payFilter('Type', _payType, [
+                  const DropdownMenuItem(value: '', child: Text('All types')),
+                  const DropdownMenuItem(value: 'COLLECTION', child: Text('Collection')),
+                  const DropdownMenuItem(value: 'PAYOUT', child: Text('Payout')),
+                ], (v) => setState(() => _payType = v ?? '')),
+                const SizedBox(width: 8),
+                _payFilter('Status', _payStatus, [
+                  const DropdownMenuItem(value: '', child: Text('All statuses')),
+                  const DropdownMenuItem(value: 'VERIFIED', child: Text('Verified')),
+                  const DropdownMenuItem(value: 'PENDING', child: Text('Pending')),
+                  const DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
+                  const DropdownMenuItem(value: 'PAID', child: Text('Paid')),
+                ], (v) => setState(() => _payStatus = v ?? '')),
+                const SizedBox(width: 8),
+                _payFilter('Month', _payMonth, [
+                  const DropdownMenuItem(value: '', child: Text('All months')),
+                  ...months.map((m) => DropdownMenuItem(value: '$m', child: Text('Month $m'))),
+                ], (v) => setState(() => _payMonth = v ?? '')),
+                if (modes.length > 1) ...[
+                  const SizedBox(width: 8),
+                  _payFilter('Mode', _payMode, [
+                    const DropdownMenuItem(value: '', child: Text('All modes')),
+                    ...modes.map((m) => DropdownMenuItem(value: m, child: Text(_paymentModeLabels[m] ?? m))),
+                  ], (v) => setState(() => _payMode = v ?? '')),
+                ],
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              children: [
+                Text('$shown of $total', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                const Spacer(),
+                if (filtersActive)
+                  TextButton(
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                    onPressed: () => setState(() {
+                      _paySearchC.clear();
+                      _payType = '';
+                      _payStatus = '';
+                      _payMonth = '';
+                      _payMode = '';
+                    }),
+                    child: const Text('Clear'),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _payFilter(String label, String value, List<DropdownMenuItem<String>> items, ValueChanged<String?> onChanged) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: value.isNotEmpty ? AppColors.primarySoft : AppColors.bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: value.isNotEmpty ? AppColors.primary.withValues(alpha: 0.4) : AppColors.border),
+      ),
+      child: DropdownButton<String>(
+        value: value,
+        underline: const SizedBox.shrink(),
+        isDense: true,
+        icon: const Icon(Icons.arrow_drop_down, size: 18),
+        style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+        items: items,
+        onChanged: onChanged,
+      ),
     );
   }
 
@@ -924,6 +1198,10 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
   bool _saving = false;
   Map<String, dynamic>? _dues; // monthly-dues (or mapped final-dues) response
   List<dynamic> _monthPayments = const [];
+  // Auctioned (+ current) months that still have dues outstanding. When loaded, the
+  // month picker offers these instead of every elapsed month. Empty = fall back to the
+  // generated month list (e.g. the summary endpoint failed).
+  List<Map<String, dynamic>> _collectable = const [];
   String? _selectedMemberId;
   final _amountC = TextEditingController();
   final _refC = TextEditingController();
@@ -943,7 +1221,29 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
   @override
   void initState() {
     super.initState();
+    _loadCollectable();
     _load(_month);
+  }
+
+  // Restrict the month picker to months that still have dues (auctioned, or the current
+  // in-progress month). Mirrors the web Record-Collection month picker.
+  Future<void> _loadCollectable() async {
+    try {
+      final list = await ref.read(chitfundRepoProvider).collectionSummary(widget.chitfundId);
+      if (!mounted) return;
+      final months = list
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .where((m) => m['fullyCollected'] != true)
+          .toList();
+      setState(() {
+        _collectable = months;
+        // If the month we opened on isn't collectable, jump to the latest collectable one.
+        if (months.isNotEmpty && !months.any((m) => toNum(m['monthNumber']).toInt() == _month)) {
+          _month = toNum(months.last['monthNumber']).toInt();
+          _load(_month);
+        }
+      });
+    } catch (_) {/* keep the generated month list */}
   }
 
   Future<void> _load(int month) async {
@@ -1078,15 +1378,27 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<int>(
+              // Re-seed the field when _month is switched programmatically (e.g. after the
+              // collectable-months load drops a fully-collected current month).
+              key: ValueKey('chit-pay-month-$_month'),
               initialValue: _month,
               decoration: const InputDecoration(labelText: 'Month'),
-              items: List.generate(_visibleMonths, (i) {
-                final m = i + 1;
-                final tags = <String>[];
-                if (m == toNum(c['currentMonth']).toInt()) tags.add('current');
-                if (m == _duration) tags.add('final');
-                return DropdownMenuItem(value: m, child: Text('Month $m${tags.isNotEmpty ? ' — ${tags.join(', ')}' : ''}'));
-              }),
+              items: _collectable.isNotEmpty
+                  ? _collectable.map((mm) {
+                      final m = toNum(mm['monthNumber']).toInt();
+                      final tags = <String>[];
+                      if (m == toNum(c['currentMonth']).toInt()) tags.add('current');
+                      if (m == _duration) tags.add('final');
+                      if (mm['auctioned'] == false) tags.add('auction pending');
+                      return DropdownMenuItem(value: m, child: Text('Month $m${tags.isNotEmpty ? ' — ${tags.join(', ')}' : ''}'));
+                    }).toList()
+                  : List.generate(_visibleMonths, (i) {
+                      final m = i + 1;
+                      final tags = <String>[];
+                      if (m == toNum(c['currentMonth']).toInt()) tags.add('current');
+                      if (m == _duration) tags.add('final');
+                      return DropdownMenuItem(value: m, child: Text('Month $m${tags.isNotEmpty ? ' — ${tags.join(', ')}' : ''}'));
+                    }),
               onChanged: (v) { if (v != null) { setState(() => _month = v); _load(v); } },
             ),
             const SizedBox(height: 12),
@@ -1233,7 +1545,7 @@ class _CustPickerState extends State<_CustPicker> {
               ],
             ),
           ),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: TextField(controller: _search, decoration: const InputDecoration(prefixIcon: Icon(Icons.search)), onSubmitted: _load)),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: TextField(controller: _search, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search by ID or name...'), onSubmitted: _load)),
           const SizedBox(height: 8),
           Expanded(
             child: _loading

@@ -12,6 +12,55 @@ import '../../../core/widgets/common.dart';
 import '../../app_shell.dart';
 import '../../../core/widgets/app_bottom_nav.dart';
 
+// Per-role visibility catalog for the "Chitfund Settings" editor. KEEP IN SYNC with the
+// web constants (finance/src/utils/constants.js) and the backend catalog
+// (finance-backend/src/utils/uiVisibility.js). Roles an admin can restrict (ORG_ADMIN
+// always sees everything); a ticked box = visible.
+const _uiVisibilityRoles = ['MANAGER', 'FIELD_OFFICER', 'CASHIER', 'ACCOUNTANT', 'VIEWER'];
+const _uiRoleLabels = {
+  'MANAGER': 'Manager',
+  'FIELD_OFFICER': 'Field Officer',
+  'CASHIER': 'Cashier',
+  'ACCOUNTANT': 'Accountant',
+  'VIEWER': 'Viewer',
+};
+const _uiVisibilityItems = <Map<String, String>>[
+  {'key': 'chitfund.edit', 'label': 'Edit button', 'group': 'Chitfund · Actions'},
+  {'key': 'chitfund.reassign', 'label': 'Reassign Officer button', 'group': 'Chitfund · Actions'},
+  {'key': 'chitfund.totalCollected', 'label': 'Total Collected', 'group': 'Chitfund · Financials'},
+  {'key': 'chitfund.totalDue', 'label': 'Total Due', 'group': 'Chitfund · Financials'},
+  {'key': 'chitfund.collected', 'label': 'Collected', 'group': 'Chitfund · Financials'},
+  {'key': 'chitfund.outstanding', 'label': 'Outstanding', 'group': 'Chitfund · Financials'},
+  {'key': 'chitfund.payouts', 'label': 'Payouts', 'group': 'Chitfund · Financials'},
+  {'key': 'chitfund.tab.timeline', 'label': 'Timeline tab', 'group': 'Chitfund · Tabs'},
+  {'key': 'chitfund.tab.members', 'label': 'Members tab', 'group': 'Chitfund · Tabs'},
+  {'key': 'chitfund.tab.auctions', 'label': 'Auctions tab', 'group': 'Chitfund · Tabs'},
+  {'key': 'chitfund.tab.payments', 'label': 'Payments tab', 'group': 'Chitfund · Tabs'},
+  {'key': 'chitfund.tab.payouts', 'label': 'Payouts tab', 'group': 'Chitfund · Tabs'},
+  {'key': 'dashboard.daySummary', 'label': 'Day Summary', 'group': 'Dashboard'},
+  {'key': 'dashboard.memberDues', 'label': 'Member Dues', 'group': 'Dashboard'},
+  {'key': 'dashboard.dayReport', 'label': 'Day Report', 'group': 'Dashboard'},
+  {'key': 'dashboard.auctionsToConduct', 'label': 'Auctions To Conduct', 'group': 'Dashboard'},
+  {'key': 'dashboard.auctionPayouts', 'label': 'Auction Payouts', 'group': 'Dashboard'},
+];
+// Items hidden by default when no explicit policy exists for a role. Only FIELD_OFFICER
+// has defaults — the chitfund action + financial items. Mirrors DEFAULT_HIDDEN backend-side.
+const _uiVisibilityDefaultHidden = <String, List<String>>{
+  'FIELD_OFFICER': [
+    'chitfund.edit', 'chitfund.reassign', 'chitfund.totalCollected', 'chitfund.totalDue',
+    'chitfund.collected', 'chitfund.outstanding', 'chitfund.payouts',
+  ],
+};
+
+// Effective visibility of one item for a role under a policy: explicit boolean if present,
+// else the code default. Used to seed the editor checkboxes.
+bool _isUiVisible(Map uiVisibility, String role, String key) {
+  if (role == 'ORG_ADMIN') return true;
+  final explicit = (uiVisibility[role] as Map?)?[key];
+  if (explicit is bool) return explicit;
+  return !((_uiVisibilityDefaultHidden[role] ?? const []).contains(key));
+}
+
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
   @override
@@ -85,6 +134,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   String _suretyDefault = 'OPTIONAL';
   final Map<String, String> _suretyByType = {};
 
+  // Per-role chitfund/dashboard UI visibility (ORG_ADMIN only). Shape:
+  // { ROLE: { 'chitfund.edit': false } }. Stored value is "visible?".
+  Map<String, dynamic> _uiVisibility = {};
+  bool _savingVisibility = false;
+
   @override
   void initState() {
     super.initState();
@@ -136,6 +190,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         by.forEach((k, v) {
           if (v is String && _policyValues.contains(v)) _suretyByType[k.toString()] = v;
         });
+        final vis = s['uiVisibility'];
+        if (vis is Map) _uiVisibility = Map<String, dynamic>.from(vis);
         _hydrated = true;
       }
       if (mounted) setState(() { _settings = s; _features = f; _subscription = sub; _loading = false; });
@@ -205,6 +261,117 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     } on ApiException catch (e) {
       showToast(e.message, error: true);
     }
+  }
+
+  // Toggle one item's visibility for a role. Stores the explicit "visible?" boolean so an
+  // admin can re-show a FIELD_OFFICER default or hide a default-visible item.
+  void _toggleUiVisible(String role, String key) {
+    setState(() {
+      final next = Map<String, dynamic>.from(_uiVisibility);
+      final roleMap = Map<String, dynamic>.from(next[role] as Map? ?? const {});
+      roleMap[key] = !_isUiVisible(_uiVisibility, role, key);
+      next[role] = roleMap;
+      _uiVisibility = next;
+    });
+  }
+
+  Future<void> _saveVisibility() async {
+    setState(() => _savingVisibility = true);
+    try {
+      await ref.read(apiClientProvider).put('/settings', data: {'uiVisibility': _uiVisibility});
+      showToast('Visibility settings saved');
+    } on ApiException catch (e) {
+      showToast(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _savingVisibility = false);
+    }
+  }
+
+  Widget _visibilitySection() {
+    final groups = <String>[];
+    for (final it in _uiVisibilityItems) {
+      final g = it['group']!;
+      if (!groups.contains(g)) groups.add(g);
+    }
+    return SectionCard(
+      title: 'Chitfund Settings',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Choose which chitfund and dashboard elements each role can see. Untick a box to '
+            'hide that item from the role. Organisation admins always see everything. The money '
+            'figures are also stripped from API responses for roles that can’t see them. '
+            'Changes apply on the user’s next login.',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 14),
+          ...groups.map(_visibilityGroup),
+          const SizedBox(height: 4),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _savingVisibility ? null : _saveVisibility,
+              icon: const Icon(Icons.save),
+              label: Text(_savingVisibility ? 'Saving...' : 'Save Visibility'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _visibilityGroup(String group) {
+    final items = _uiVisibilityItems.where((i) => i['group'] == group).toList();
+    const labelW = 150.0;
+    const cellW = 58.0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(group, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const SizedBox(width: labelW),
+                    ..._uiVisibilityRoles.map((r) => SizedBox(
+                          width: cellW,
+                          child: Text(_uiRoleLabels[r] ?? r,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                        )),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                ...items.map((it) {
+                  final key = it['key']!;
+                  return Row(
+                    children: [
+                      SizedBox(width: labelW, child: Text(it['label']!, style: const TextStyle(fontSize: 12))),
+                      ..._uiVisibilityRoles.map((r) => SizedBox(
+                            width: cellW,
+                            height: 40,
+                            child: Checkbox(
+                              value: _isUiVisible(_uiVisibility, r, key),
+                              visualDensity: VisualDensity.compact,
+                              onChanged: (_) => _toggleUiVisible(r, key),
+                            ),
+                          )),
+                    ],
+                  );
+                }),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -462,6 +629,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
         ),
         const SizedBox(height: 16),
+        // Per-role chitfund/dashboard visibility editor (ORG_ADMIN only).
+        if (ref.read(authProvider).user?.role == 'ORG_ADMIN') _visibilitySection(),
         SectionCard(
           title: 'Features',
           child: Column(

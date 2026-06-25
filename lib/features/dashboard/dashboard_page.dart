@@ -67,6 +67,12 @@ class DashboardPage extends ConsumerWidget {
     final isAdmin = role == 'ORG_ADMIN' || role == 'MANAGER';
     final features = auth.org?.features ?? const {};
 
+    final chitEnabled = features['enableChitfund'] == true && d['chitfund'] != null;
+    // Chit-only orgs (no loan module) have no separate generic Day Summary / Day Report,
+    // so the chit cards own the full org-cash position and the generic copies would just
+    // duplicate them. Suppress those when the chit section owns the day cash.
+    final chitOwnsDayCash = chitEnabled && features['enableLoans'] != true;
+
     // Layout mirrors the web dashboard's mobile-responsive view exactly:
     // a 2-column gradient stat grid followed by single-column stacked cards.
     return ListView(
@@ -77,11 +83,12 @@ class DashboardPage extends ConsumerWidget {
           _pendingVerificationList(d),
           _overdueLoansList(context, d),
           _dailyCollectionChart(d),
+          if (chitEnabled) _chitfundSection(context, d, auth, features),
         ] else ...[
           _adminTopCards(context, d),
-          _daySummaryCard(d),
+          if (!chitOwnsDayCash) _daySummaryCard(d),
           if ((features['enableLoans'] == true) && role == 'ORG_ADMIN') _outstandingCard(d),
-          _dayReportCard(d),
+          if (!chitOwnsDayCash) _dayReportCard(d),
           if (features['enableSavings'] == true) _savingsPoolGradientCard(d),
           if (features['enableLoans'] == true) _upcomingOverdueCard(context, d, isAdmin),
           if (isAdmin) _pendingVerificationByAgentCard(context, d),
@@ -91,9 +98,239 @@ class DashboardPage extends ConsumerWidget {
             _monthlyCollectionsChart(d),
             _monthlyDisbursementsChart(d),
           ],
+          if (chitEnabled) _chitfundSection(context, d, auth, features),
         ],
         const SizedBox(height: 24),
       ],
+    );
+  }
+
+  // === Chit Funds section — mirrors the web ChitfundDashboard. Headline stat cards,
+  // then Day Summary / Member Dues / Day Report and Auctions / Payouts lists, each
+  // gated per-role via isHidden('dashboard.*'). For chit-only orgs the cash cards
+  // reflect full org cash (expenses + investments + chit flows); otherwise chit cash only.
+  Widget _chitfundSection(BuildContext context, Map<String, dynamic> d, AuthState auth, Map features) {
+    final c = Map<String, dynamic>.from(d['chitfund'] ?? const {});
+    final showDaySummary = !auth.isHidden('dashboard.daySummary');
+    final showMemberDues = !auth.isHidden('dashboard.memberDues');
+    final showDayReport = !auth.isHidden('dashboard.dayReport');
+    final showAuctionsToConduct = !auth.isHidden('dashboard.auctionsToConduct');
+    final showAuctionPayouts = !auth.isHidden('dashboard.auctionPayouts');
+    final enableLoans = features['enableLoans'] == true;
+    final enableExpenses = features['enableExpenses'] == true;
+    final enableInvestments = features['enableInvestments'] == true;
+    final showOrgCash = !enableLoans;
+
+    final dayOpen = showOrgCash ? toNum(d['openBalance']) : toNum(c['openBalance']);
+    final dayClosing = showOrgCash ? toNum(d['closingBalance']) : toNum(c['closingBalance']);
+    final dayInflow = showOrgCash
+        ? toNum(d['totalCollectionsToday']) + toNum(d['todayInvestmentAmount']) + toNum(d['todayChitCollectionAmount'])
+        : toNum(c['dayCollectionAmount']);
+    final dayOutflow = showOrgCash
+        ? toNum(d['todayDisbursedAmount']) + toNum(d['todayExpensesAmount']) + toNum(d['todayInvestmentWithdrawalsAmount']) + toNum(d['todayChitPayoutAmount'])
+        : toNum(c['dayPayoutAmount']);
+
+    final auctions = ((c['auctionsToConduct'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final payouts = ((c['pendingAuctionPayments'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(color: AppColors.info.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.savings_outlined, size: 18, color: AppColors.info),
+            ),
+            const SizedBox(width: 10),
+            const Text('Chit Funds', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            const Spacer(),
+            TextButton(onPressed: () => context.push('/chitfunds'), child: const Text('View all')),
+          ],
+        ),
+        const SizedBox(height: 8),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 1.3,
+          children: [
+            _gradientStatTile('Active Chits', '${c['activeCount'] ?? 0}',
+                subtitle: '${formatCurrency(c['totalValue'])} total', icon: Icons.monetization_on,
+                gradient: const LinearGradient(colors: [Color(0xFF14B8A6), Color(0xFF059669)]),
+                onTap: () => context.push('/chitfunds')),
+            _gradientStatTile('Active Members', '${c['activeMembers'] ?? 0}',
+                subtitle: 'across active chits', icon: Icons.groups,
+                gradient: const LinearGradient(colors: [Color(0xFF3B82F6), Color(0xFF4F46E5)])),
+            _gradientStatTile('Auctions To Conduct', '${c['auctionsDueCount'] ?? 0}',
+                subtitle: '${c['auctionsTodayCount'] ?? 0} due today', icon: Icons.gavel,
+                gradient: const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)])),
+            _gradientStatTile('To Be Collected', formatCurrency(c['totalToCollect']),
+                subtitle: 'still to collect', icon: Icons.account_balance_wallet,
+                gradient: const LinearGradient(colors: [Color(0xFFF43F5E), Color(0xFFDC2626)])),
+          ],
+        ),
+        if (showDaySummary) _chitDaySummaryCard(c, d, showOrgCash: showOrgCash, enableExpenses: enableExpenses, enableInvestments: enableInvestments),
+        if (showMemberDues) _chitMemberDuesCard(c),
+        if (showDayReport) _chitDayReportCard(d, dayOpen, dayInflow, dayOutflow, dayClosing, showOrgCash),
+        if (showAuctionsToConduct) _chitAuctionsCard(context, auctions),
+        if (showAuctionPayouts) _chitPayoutsCard(context, c, payouts),
+      ],
+    );
+  }
+
+  Widget _chitDaySummaryCard(Map<String, dynamic> c, Map<String, dynamic> d,
+      {required bool showOrgCash, required bool enableExpenses, required bool enableInvestments}) {
+    return SectionCard(
+      title: 'Day Summary',
+      child: Column(
+        children: [
+          _kvRow('Collection${toNum(c['dayCollectionCount']) > 0 ? ' (${toNum(c['dayCollectionCount']).toInt()})' : ''}',
+              formatCurrency(c['dayCollectionAmount']), color: AppColors.accent),
+          const Divider(height: 1),
+          _kvRow('Payouts${toNum(c['dayPayoutCount']) > 0 ? ' (${toNum(c['dayPayoutCount']).toInt()})' : ''}',
+              formatCurrency(c['dayPayoutAmount']), color: AppColors.danger),
+          if (showOrgCash && enableExpenses) ...[
+            const Divider(height: 1),
+            _kvRow('Expenses', formatCurrency(d['todayExpensesAmount']), color: AppColors.danger),
+          ],
+          if (showOrgCash && enableInvestments) ...[
+            const Divider(height: 1),
+            _kvRow('Investment', formatCurrency(d['todayInvestmentAmount'])),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _chitMemberDuesCard(Map<String, dynamic> c) {
+    return SectionCard(
+      title: 'Member Dues',
+      child: Column(
+        children: [
+          _kvRow('Old Dues', formatCurrency(c['oldDues']), color: AppColors.danger),
+          const Divider(height: 1),
+          _kvRow('Current Month Due', formatCurrency(c['currentMonthDue']), color: AppColors.warning),
+          const Divider(height: 1),
+          _kvRow('Total To Collect', formatCurrency(c['totalToCollect']), bold: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _chitDayReportCard(Map<String, dynamic> d, num open, num inflow, num outflow, num closing, bool showOrgCash) {
+    final expenses = toNum(d['todayExpensesAmount']);
+    final withdrawals = toNum(d['todayInvestmentWithdrawalsAmount']);
+    return SectionCard(
+      title: 'Day Report',
+      child: Column(
+        children: [
+          _kvRow('Open Balance', formatCurrency(open), color: open < 0 ? AppColors.danger : null),
+          const Divider(height: 1),
+          _kvRow('Inflow', formatCurrency(inflow), color: AppColors.accent),
+          const Divider(height: 1),
+          _kvRow('Outflow', formatCurrency(outflow), color: AppColors.danger),
+          if (showOrgCash && expenses > 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, top: 2, bottom: 2),
+              child: Row(children: [
+                const Expanded(child: Text('Expenses', style: TextStyle(fontSize: 12, color: AppColors.textSecondary))),
+                Text(formatCurrency(expenses), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.danger)),
+              ]),
+            ),
+          if (showOrgCash && withdrawals > 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, top: 2, bottom: 2),
+              child: Row(children: [
+                const Expanded(child: Text('Investment Withdrawals', style: TextStyle(fontSize: 12, color: AppColors.textSecondary))),
+                Text(formatCurrency(withdrawals), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.danger)),
+              ]),
+            ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(color: AppColors.bg, borderRadius: BorderRadius.circular(10)),
+            child: Row(children: [
+              const Expanded(child: Text('Closing Balance', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800))),
+              Text(formatCurrency(closing),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: closing < 0 ? AppColors.danger : AppColors.accent)),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chitAuctionsCard(BuildContext context, List<Map<String, dynamic>> auctions) {
+    return SectionCard(
+      title: 'Auctions To Conduct (${auctions.length})',
+      child: auctions.isEmpty
+          ? const EmptyView(message: 'No auctions due', icon: Icons.gavel_outlined)
+          : Column(
+              children: auctions.map((a) {
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  onTap: () => context.push('/chitfunds/${a['chitfundId']}'),
+                  title: Text('${a['chitName'] ?? ''}${a['chitNumber'] != null ? '  #${a['chitNumber']}' : ''}'),
+                  subtitle: Text('Month ${a['monthNumber']} · ${formatDate(a['auctionDate'])}', style: const TextStyle(fontSize: 11)),
+                  trailing: StatusChip(
+                    label: a['overdue'] == true ? 'Overdue' : 'Today',
+                    color: a['overdue'] == true ? AppColors.danger : AppColors.warning,
+                  ),
+                );
+              }).toList(),
+            ),
+    );
+  }
+
+  Widget _chitPayoutsCard(BuildContext context, Map<String, dynamic> c, List<Map<String, dynamic>> payouts) {
+    return SectionCard(
+      title: 'Auction Payouts',
+      actions: [StatusChip(label: '${toNum(c['pendingPayoutCount']).toInt()} to pay', color: AppColors.danger)],
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('To Pay', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                    Text(formatCurrency(c['pendingPayoutAmount']), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.danger)),
+                    Text('${toNum(c['pendingPayoutCount']).toInt()} winners', style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Paid', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                    Text(formatCurrency(c['paidPayoutAmount']), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.accent)),
+                    Text('${toNum(c['paidPayoutCount']).toInt()} settled', style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (payouts.isNotEmpty) const Divider(height: 16),
+          ...payouts.map((p) {
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              onTap: () => context.push('/chitfunds/${p['chitfundId']}'),
+              title: Text('${p['winnerName'] ?? 'Winner'}${p['ticketNumber'] != null ? ' · #${p['ticketNumber']}' : ''}'),
+              subtitle: Text('${p['chitName'] ?? ''} · Month ${p['monthNumber']}', style: const TextStyle(fontSize: 11)),
+              trailing: Text(formatCurrency(p['amount']), style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.danger)),
+            );
+          }),
+        ],
+      ),
     );
   }
 

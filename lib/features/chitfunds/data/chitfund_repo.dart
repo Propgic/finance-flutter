@@ -57,6 +57,14 @@ class ChitfundRepo {
   Future<void> reverseAuction(String id, String auctionId) async =>
       api.post('/chitfunds/$id/auctions/$auctionId/reverse');
 
+  // Consolidated lifecycle ("calendar") view: one payload with every month's auction,
+  // dues, collected, outstanding and payout. Hidden money figures are stripped
+  // server-side per role. GET /chitfunds/:id/timeline.
+  Future<Map<String, dynamic>> timeline(String id) async {
+    final d = await api.get('/chitfunds/$id/timeline');
+    return Map<String, dynamic>.from(d as Map);
+  }
+
   Future<Map<String, dynamic>> monthlyDues(String id, int monthNumber) async {
     final d = await api.get('/chitfunds/$id/monthly-dues/$monthNumber');
     return Map<String, dynamic>.from(d as Map);
@@ -65,6 +73,15 @@ class ChitfundRepo {
   Future<Map<String, dynamic>> finalDues(String id) async {
     final d = await api.get('/chitfunds/$id/final-dues');
     return Map<String, dynamic>.from(d as Map);
+  }
+
+  // Per-month collection summary: auctioned months (plus the in-progress current month)
+  // with collected/pending totals and a `fullyCollected` flag — used to offer only the
+  // months that still have dues in the Record-Payment month picker.
+  Future<List<dynamic>> collectionSummary(String id) async {
+    final d = await api.get('/chitfunds/$id/collection-summary');
+    if (d is Map && d['months'] is List) return List<dynamic>.from(d['months'] as List);
+    return const [];
   }
 
   Future<List<dynamic>> payments(String id, {int? monthNumber, String? memberId, String? type, String? status}) async {

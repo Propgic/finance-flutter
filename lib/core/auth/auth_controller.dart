@@ -216,6 +216,7 @@ class AuthController extends Notifier<AuthState> {
       phone: phone ?? state.user!.phone,
       photo: photo ?? state.user!.photo,
       permissions: state.user!.permissions,
+      hiddenUI: state.user!.hiddenUI,
     );
     await AccountStore.updateActiveProfile(user: updated.toJson());
     state = state.copyWith(user: updated);
