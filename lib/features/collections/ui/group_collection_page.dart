@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/location.dart';
@@ -68,7 +67,17 @@ class _GroupCollectionPageState extends ConsumerState<GroupCollectionPage> {
         if (location != null) ...location.toJson(),
       });
       showToast('Group collection recorded');
-      if (mounted) context.go('/collections');
+      // Stay on the group collection page so the agent can keep working with the
+      // same group — clear the entered amounts (and reference) so the just-posted
+      // figures can't be re-submitted by accident.
+      if (mounted) {
+        setState(() {
+          for (final c in _amounts.values) {
+            c.clear();
+          }
+          _reference.clear();
+        });
+      }
     } on ApiException catch (e) {
       showToast(e.message, error: true);
     } finally {
