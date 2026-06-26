@@ -51,6 +51,10 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
   Map<String, dynamic>? _selectedLoan;
   List<Map<String, dynamic>> _emis = [];
   List<Map<String, dynamic>> _pendingEmis = [];
+  // The selected loan's previous payments — the customer's "passbook", shown read-only
+  // beside the form so the collector sees what's already been paid while recording.
+  List<Map<String, dynamic>> _loanPayments = [];
+  bool _loadingPayments = false;
   final _searchCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
@@ -145,12 +149,27 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
     }
   }
 
+  Future<void> _loadLoanPayments(String loanId) async {
+    setState(() => _loadingPayments = true);
+    try {
+      final d = await ref.read(apiClientProvider).get('/collections', query: {'loanId': loanId, 'limit': 100});
+      final list = extractList(d).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      if (mounted) setState(() => _loanPayments = list);
+    } catch (_) {
+      if (mounted) setState(() => _loanPayments = []);
+    } finally {
+      if (mounted) setState(() => _loadingPayments = false);
+    }
+  }
+
   void _selectLoan(Map<String, dynamic> loan) {
     setState(() {
       _selectedLoan = loan;
       _searchCtrl.text = '';
+      _loanPayments = [];
     });
     _loadEmis(loan['id'].toString());
+    _loadLoanPayments(loan['id'].toString());
   }
 
   Future<void> _submit() async {
@@ -313,6 +332,7 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
             ),
           if (_selectedLoan != null) _selectedLoanCard(),
           if (_selectedLoan != null && _emis.isNotEmpty) _todaysDueCard(),
+          if (_selectedLoan != null) _passbookCard(),
           if (_selectedLoan != null)
             SectionCard(
               title: 'Payment',
@@ -419,6 +439,7 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
                     _selectedLoan = null;
                     _emis = [];
                     _pendingEmis = [];
+                    _loanPayments = [];
                   }),
                   child: const Text('Change'),
                 ),
@@ -439,6 +460,99 @@ class _CollectionFormPageState extends ConsumerState<CollectionFormPage> {
           ],
         ),
       ),
+    );
+  }
+
+  // The customer's "passbook": the selected loan's previous payments, read-only, so the
+  // collector sees what's already been paid (and when) while recording the next one.
+  Widget _passbookCard() {
+    final loan = _selectedLoan!;
+    final showAmount = !loanFieldHidden(loan, 'totalPayable');
+    // Pending money has been handed over too, so it counts toward what's paid; rejected don't.
+    final counted = _loanPayments.where((p) => p['verificationStatus'] != 'REJECTED').toList();
+    final totalPaid = counted.fold<num>(0, (s, p) => s + toNum(p['amount']));
+
+    return SectionCard(
+      title: 'Payment History',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_loadingPayments)
+            const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
+          else if (_loanPayments.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(
+                child: Text('No previous payments — this will be the first collection',
+                    textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
+              ),
+            )
+          else ...[
+            Row(
+              children: [
+                Expanded(child: _passbookStat('${counted.length}', 'Payments')),
+                if (showAmount) Expanded(child: _passbookStat(formatCurrency(totalPaid), 'Total paid', color: AppColors.accent)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 280),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: _loanPayments.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final p = _loanPayments[i];
+                  final status = p['verificationStatus']?.toString() ?? 'PENDING';
+                  final collectedBy = p['collectedBy'] is Map ? p['collectedBy']['name']?.toString() : null;
+                  final mode = p['paymentMode']?.toString();
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                showAmount ? formatCurrency(p['amount']) : (mode ?? '-'),
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            StatusChip(label: status, color: statusColor(status)),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${formatDate(p['collectedAt'])}${showAmount && mode != null ? ' · $mode' : ''}',
+                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                              ),
+                            ),
+                            if (collectedBy != null)
+                              Text(collectedBy, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _passbookStat(String value, String label, {Color? color}) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color ?? AppColors.textPrimary)),
+        Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+      ],
     );
   }
 

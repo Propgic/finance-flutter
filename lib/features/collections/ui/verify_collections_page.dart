@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -39,27 +40,48 @@ class VerifyCollectionsPage extends ConsumerStatefulWidget {
 class _VerifyCollectionsPageState extends ConsumerState<VerifyCollectionsPage> {
   List<Map<String, dynamic>> _items = [];
   Map<String, dynamic>? _summary;
-  bool _loading = true;
+  // True only until the first fetch settles. Gates the full-page spinner so later
+  // searches re-render in place instead of unmounting (which would drop search focus).
+  bool _initialLoad = true;
   Object? _error;
+  final _searchCtrl = TextEditingController();
+  String _search = '';
+  Timer? _debounce;
 
   @override
   void initState() { super.initState(); _fetch(); }
 
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      _search = v;
+      _fetch();
+    });
+  }
+
   Future<void> _fetch() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() => _error = null);
     try {
       final api = ref.read(apiClientProvider);
       final q = <String, dynamic>{'limit': 200};
       if (widget.collectedById?.isNotEmpty ?? false) q['collectedById'] = widget.collectedById;
+      if (_search.trim().isNotEmpty) q['search'] = _search.trim();
       final res = await api.raw(() => api.dio.get('/collections/pending-verification', queryParameters: q));
       final body = res.data;
       final data = body is Map && body['data'] is List ? body['data'] as List : const [];
       if (body is Map && body['summary'] != null) {
         _summary = Map<String, dynamic>.from(body['summary'] as Map);
       }
-      setState(() => _items = data.map((e) => Map<String, dynamic>.from(e as Map)).toList());
-    } catch (e) { setState(() => _error = e); }
-    finally { if (mounted) setState(() => _loading = false); }
+      if (mounted) setState(() => _items = data.map((e) => Map<String, dynamic>.from(e as Map)).toList());
+    } catch (e) { if (mounted) setState(() => _error = e); }
+    finally { if (mounted) setState(() => _initialLoad = false); }
   }
 
   Future<void> _verify(String id, bool approve) async {
@@ -76,36 +98,64 @@ class _VerifyCollectionsPageState extends ConsumerState<VerifyCollectionsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text((widget.collectorName?.isNotEmpty ?? false) ? 'Verify — ${widget.collectorName}' : 'Verify Collections')),
-      body: _loading
+      body: _initialLoad
           ? const LoadingView()
-          : _error != null
-              ? ErrorView(message: _error.toString(), onRetry: _fetch)
-              : _items.isEmpty
-                  ? const EmptyView(message: 'Nothing pending', icon: Icons.check_circle_outline)
-                  : RefreshIndicator(
-                      onRefresh: _fetch,
-                      child: ListView(
-                        padding: const EdgeInsets.all(12),
-                        children: [
-                          if (_summary != null) ...[
-                            Row(children: [
-                              _metricCard('To Be Verified', formatCurrency(_summary!['pendingAmount']), AppColors.warning),
-                              const SizedBox(width: 8),
-                              _metricCard("Today's Pending", formatCurrency(_summary!['todayPendingAmount']), AppColors.textPrimary),
-                            ]),
-                            const SizedBox(height: 8),
-                            Row(children: [
-                              _metricCard('Collectors', '${_summary!['collectorsCount'] ?? 0}', AppColors.primary),
-                              const SizedBox(width: 8),
-                              _metricCard('Older Pending', formatCurrency(toNum(_summary!['pendingAmount']) - toNum(_summary!['todayPendingAmount'])), AppColors.danger),
-                            ]),
-                            const SizedBox(height: 12),
-                          ],
-                          ..._items.map(_collectionCard),
-                          const SizedBox(height: 20),
-                        ],
-                      ),
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                  child: TextField(
+                    controller: _searchCtrl,
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search),
+                      hintText: 'Search customer, customer #, loan / chit #, agent, receipt...',
+                      suffixIcon: _searchCtrl.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () { _searchCtrl.clear(); _search = ''; _fetch(); },
+                            ),
                     ),
+                    onChanged: _onSearchChanged,
+                  ),
+                ),
+                Expanded(
+                  child: _error != null
+                      ? ErrorView(message: _error.toString(), onRetry: _fetch)
+                      : _items.isEmpty
+                          ? EmptyView(
+                              message: _search.trim().isEmpty
+                                  ? 'Nothing pending'
+                                  : 'No pending collections match "${_search.trim()}"',
+                              icon: Icons.check_circle_outline,
+                            )
+                          : RefreshIndicator(
+                              onRefresh: _fetch,
+                              child: ListView(
+                                padding: const EdgeInsets.all(12),
+                                children: [
+                                  if (_summary != null) ...[
+                                    Row(children: [
+                                      _metricCard('To Be Verified', formatCurrency(_summary!['pendingAmount']), AppColors.warning),
+                                      const SizedBox(width: 8),
+                                      _metricCard("Today's Pending", formatCurrency(_summary!['todayPendingAmount']), AppColors.textPrimary),
+                                    ]),
+                                    const SizedBox(height: 8),
+                                    Row(children: [
+                                      _metricCard('Collectors', '${_summary!['collectorsCount'] ?? 0}', AppColors.primary),
+                                      const SizedBox(width: 8),
+                                      _metricCard('Older Pending', formatCurrency(toNum(_summary!['pendingAmount']) - toNum(_summary!['todayPendingAmount'])), AppColors.danger),
+                                    ]),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  ..._items.map(_collectionCard),
+                                  const SizedBox(height: 20),
+                                ],
+                              ),
+                            ),
+                ),
+              ],
+            ),
     );
   }
 

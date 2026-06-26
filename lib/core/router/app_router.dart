@@ -54,6 +54,7 @@ import '../../features/reports/ui/investment_report_page.dart';
 import '../../features/reports/ui/customer_report_page.dart';
 import '../../features/reports/ui/progress_report_page.dart';
 import '../../features/reports/ui/group_collection_report_page.dart';
+import '../../features/reports/ui/chitfund_returns_report_page.dart';
 import '../../features/settings/ui/settings_page.dart';
 import '../../features/settings/ui/roles_permissions_page.dart';
 import '../../features/collections/ui/collection_map_page.dart';
@@ -160,6 +161,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/reports/customer/:id', builder: (_, s) => CustomerReportPage(customerId: s.pathParameters['id'])),
           GoRoute(path: '/reports/progress', builder: (_, __) => const ProgressReportPage()),
           GoRoute(path: '/reports/group-collection', builder: (_, __) => const GroupCollectionReportPage()),
+          GoRoute(path: '/reports/chit-returns', builder: (_, __) => const ChitfundReturnsReportPage()),
 
           GoRoute(path: '/settings', builder: (_, __) => const SettingsPage()),
           GoRoute(path: '/settings/roles', builder: (_, __) => const RolesPermissionsPage()),

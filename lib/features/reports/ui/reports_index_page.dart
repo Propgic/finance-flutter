@@ -29,6 +29,8 @@ class ReportsIndexPage extends ConsumerWidget {
       _ReportItem('Progress Report', Icons.insights_outlined, '/reports/progress', 'reports.progress'),
       if (org?.feature('enableGroupLoan') == true)
         _ReportItem('Group Collection Report', Icons.groups_outlined, '/reports/group-collection', 'reports.group_collection'),
+      if (org?.feature('enableChitfund') == true)
+        _ReportItem('Chit Returns Report', Icons.monetization_on_outlined, '/reports/chit-returns', 'reports.chitfund'),
     ];
     final visible = items.where((i) => auth.hasPermission(i.permission)).toList();
     return Scaffold(

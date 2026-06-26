@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/app_theme.dart';
@@ -125,16 +126,34 @@ class _ReceiptPageState extends ConsumerState<ReceiptPage> {
           final fieldOfficerOk = role != 'FIELD_OFFICER' ||
               (collection['collectedById'] == auth.user?.id && withinFieldOfficerEditWindow);
           final canEdit = editingEnabled && statusEditable && canEditCollections && fieldOfficerOk;
+          final canCreate = auth.hasPermission('collections.create');
           return ListView(
             padding: const EdgeInsets.all(14),
             children: [
-              if (canEdit)
+              if (canEdit || canCreate)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: OutlinedButton.icon(
-                    onPressed: () => _editAmount(collection),
-                    icon: const Icon(Icons.edit),
-                    label: const Text('Edit Amount'),
+                  child: Row(
+                    children: [
+                      if (canEdit)
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _editAmount(collection),
+                            icon: const Icon(Icons.edit),
+                            label: const Text('Edit Amount'),
+                          ),
+                        ),
+                      if (canEdit && canCreate) const SizedBox(width: 10),
+                      if (canCreate)
+                        Expanded(
+                          // Quick next-step CTA: jump straight into recording another collection.
+                          child: ElevatedButton.icon(
+                            onPressed: () => context.push('/collections/new'),
+                            icon: const Icon(Icons.add),
+                            label: const Text('New Collection'),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               Card(

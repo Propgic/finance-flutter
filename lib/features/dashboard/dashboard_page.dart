@@ -170,8 +170,14 @@ class DashboardPage extends ConsumerWidget {
                 subtitle: '${c['auctionsTodayCount'] ?? 0} due today', icon: Icons.gavel,
                 gradient: const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)])),
             _gradientStatTile('To Be Collected', formatCurrency(c['totalToCollect']),
-                subtitle: 'still to collect', icon: Icons.account_balance_wallet,
-                gradient: const LinearGradient(colors: [Color(0xFFF43F5E), Color(0xFFDC2626)])),
+                subtitle: 'tap for breakdown', icon: Icons.account_balance_wallet,
+                gradient: const LinearGradient(colors: [Color(0xFFF43F5E), Color(0xFFDC2626)]),
+                onTap: () => showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => const ChitDuesSheet(),
+                    )),
           ],
         ),
         if (showDaySummary) _chitDaySummaryCard(c, d, showOrgCash: showOrgCash, enableExpenses: enableExpenses, enableInvestments: enableInvestments),
@@ -616,38 +622,76 @@ class DashboardPage extends ConsumerWidget {
     );
   }
 
+  // Field officers don't receive the pre-combined pending-verification total (it's
+  // computed admin-only server-side), so sum the per-source loan + chit figures; fall
+  // back to the combined field when the per-source figures aren't present.
+  num _pvCount(Map<String, dynamic> d) {
+    final loan = toNum(d['pendingVerificationLoanCount']);
+    final chit = toNum(d['pendingVerificationChitCount']);
+    if (loan > 0 || chit > 0) return loan + chit;
+    return toNum(d['pendingVerificationCount']);
+  }
+
+  num _pvAmount(Map<String, dynamic> d) {
+    final loan = toNum(d['pendingVerificationLoanAmount']);
+    final chit = toNum(d['pendingVerificationChitAmount']);
+    if (loan > 0 || chit > 0) return loan + chit;
+    return toNum(d['pendingVerificationAmount']);
+  }
+
   // === Lists ===
   Widget _pendingVerificationList(Map<String, dynamic> d) {
     final list = (d['pendingCollections'] as List?) ?? const [];
     if (list.isEmpty) return const SizedBox.shrink();
+    // True count from the API (uncapped); the list below shows only the most recent.
+    final count = _pvCount(d);
+    final amount = _pvAmount(d);
+    final badgeCount = count > 0 ? count.toInt() : list.length;
     return SectionCard(
-      title: 'Pending Verification (${list.length})',
+      title: 'Pending Verification ($badgeCount)',
       child: Column(
-        children: list.map((c) {
-          final m = Map<String, dynamic>.from(c as Map);
-          final cust = Map<String, dynamic>.from(m['customer'] ?? {});
-          final loan = Map<String, dynamic>.from(m['loan'] ?? {});
-          final isChit = m['sourceType'] == 'CHITFUND';
-          final chit = Map<String, dynamic>.from(m['chitfund'] ?? {});
-          final ref = isChit
-              ? 'Chit ${chit['chitNumber'] ?? chit['name'] ?? ''}${m['monthNumber'] != null ? ' · M${m['monthNumber']}' : ''}'
-              : 'Loan #${loan['loanNumber'] ?? '-'}';
-          return ListTile(
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-            leading: const Icon(Icons.shield_outlined, color: AppColors.warning),
-            title: Text('${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}'.trim()),
-            subtitle: Text('$ref · ${m['receiptNumber'] ?? '-'}', style: const TextStyle(fontSize: 11)),
-            trailing: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(formatCurrency(m['amount']), style: const TextStyle(fontWeight: FontWeight.w700)),
-                Text(formatDate(m['collectedAt']), style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-              ],
+        children: [
+          ...list.map((c) {
+            final m = Map<String, dynamic>.from(c as Map);
+            final cust = Map<String, dynamic>.from(m['customer'] ?? {});
+            final loan = Map<String, dynamic>.from(m['loan'] ?? {});
+            final isChit = m['sourceType'] == 'CHITFUND';
+            final chit = Map<String, dynamic>.from(m['chitfund'] ?? {});
+            final ref = isChit
+                ? 'Chit ${chit['chitNumber'] ?? chit['name'] ?? ''}${m['monthNumber'] != null ? ' · M${m['monthNumber']}' : ''}'
+                : 'Loan #${loan['loanNumber'] ?? '-'}';
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: const Icon(Icons.shield_outlined, color: AppColors.warning),
+              title: Text('${cust['firstName'] ?? ''} ${cust['lastName'] ?? ''}'.trim()),
+              subtitle: Text('$ref · ${m['receiptNumber'] ?? '-'}', style: const TextStyle(fontSize: 11)),
+              trailing: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(formatCurrency(m['amount']), style: const TextStyle(fontWeight: FontWeight.w700)),
+                  Text(formatDate(m['collectedAt']), style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                ],
+              ),
+            );
+          }),
+          // Running total of everything awaiting verification (uncapped) — mirrors the
+          // admin card so field officers see their total too.
+          if (amount > 0) ...[
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  const Text('Total: ', style: TextStyle(fontSize: 13, color: AppColors.warning)),
+                  Text(formatCurrency(amount), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.warning)),
+                ],
+              ),
             ),
-          );
-        }).toList(),
+          ],
+        ],
       ),
     );
   }
@@ -966,6 +1010,164 @@ class DashboardPage extends ConsumerWidget {
     if (v.abs() >= 100000) return '${(v / 100000).toStringAsFixed(1)}L';
     if (v.abs() >= 1000) return '${(v / 1000).toStringAsFixed(0)}K';
     return v.toStringAsFixed(0);
+  }
+}
+
+// Drill-down behind the chit "To Be Collected" card: who still owes and which chit.
+// Lazy-loads GET /dashboard/chit-dues on open (the backend scopes a field officer's
+// view to the chits assigned to them). Tapping a chit/member jumps to that chit.
+class ChitDuesSheet extends ConsumerStatefulWidget {
+  const ChitDuesSheet({super.key});
+  @override
+  ConsumerState<ChitDuesSheet> createState() => _ChitDuesSheetState();
+}
+
+class _ChitDuesSheetState extends ConsumerState<ChitDuesSheet> {
+  bool _loading = true;
+  bool _error = false;
+  Map<String, dynamic>? _data;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = false; });
+    try {
+      final d = await ref.read(apiClientProvider).get('/dashboard/chit-dues');
+      if (mounted) setState(() { _data = Map<String, dynamic>.from(d as Map); _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() { _error = true; _loading = false; });
+    }
+  }
+
+  void _goChit(String id) {
+    final router = GoRouter.of(context);
+    Navigator.of(context).pop();
+    router.push('/chitfunds/$id');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final chits = ((_data?['chits'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          Container(margin: const EdgeInsets.only(top: 10), width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2))),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 8, 6),
+            child: Row(
+              children: [
+                const Expanded(child: Text('To Be Collected', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
+                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _loading
+                ? const LoadingView()
+                : _error
+                    ? ErrorView(message: "Couldn't load dues. Please try again.", onRetry: _load)
+                    : chits.isEmpty
+                        ? const EmptyView(message: "Everyone's paid up — nothing to collect.", icon: Icons.verified_outlined)
+                        : ListView(
+                            padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
+                            children: [
+                              _totals(),
+                              const SizedBox(height: 12),
+                              ...chits.map(_chitGroup),
+                            ],
+                          ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _totals() {
+    final d = _data!;
+    final memberCount = toNum(d['memberCount']).toInt();
+    return Row(
+      children: [
+        Expanded(child: _totalTile('Old Dues', formatCurrency(d['oldDues']), AppColors.danger)),
+        const SizedBox(width: 8),
+        Expanded(child: _totalTile('This Month', formatCurrency(d['currentMonthDue']), AppColors.warning)),
+        const SizedBox(width: 8),
+        Expanded(child: _totalTile('Total · $memberCount', formatCurrency(d['totalToCollect']), AppColors.danger)),
+      ],
+    );
+  }
+
+  Widget _totalTile(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+      decoration: BoxDecoration(color: AppColors.bg, borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        children: [
+          Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary), textAlign: TextAlign.center),
+          const SizedBox(height: 4),
+          Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: color), textAlign: TextAlign.center),
+        ],
+      ),
+    );
+  }
+
+  Widget _chitGroup(Map<String, dynamic> g) {
+    final members = ((g['members'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final id = g['chitfundId'].toString();
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: () => _goChit(id),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: const BoxDecoration(color: AppColors.bg, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+              child: Row(
+                children: [
+                  const Icon(Icons.account_balance_wallet_outlined, size: 18, color: Color(0xFF14B8A6)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('${g['chitName'] ?? ''}  #${g['chitNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
+                  Text(formatCurrency(g['totalDue']), style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.danger)),
+                  const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
+                ],
+              ),
+            ),
+          ),
+          ...members.map((m) {
+            final old = toNum(m['oldDues']);
+            final cur = toNum(m['currentMonthDue']);
+            final sub = <String>[];
+            if (old > 0) sub.add('Old ${formatCurrency(old)}');
+            if (cur > 0) sub.add('This month ${formatCurrency(cur)}');
+            final name = m['customerName']?.toString() ?? '';
+            final ticket = m['ticketNumber'];
+            final avatarLabel = ticket != null ? '$ticket' : (name.isEmpty ? '?' : name[0].toUpperCase());
+            return ListTile(
+              dense: true,
+              onTap: () => _goChit(id),
+              leading: CircleAvatar(
+                radius: 15,
+                backgroundColor: AppColors.danger.withValues(alpha: 0.1),
+                child: Text(avatarLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.danger)),
+              ),
+              title: Text(name.isEmpty ? 'Member' : name, style: const TextStyle(fontSize: 13)),
+              subtitle: sub.isEmpty ? null : Text(sub.join(' · '), style: const TextStyle(fontSize: 11)),
+              trailing: Text(formatCurrency(m['totalDue']), style: const TextStyle(fontWeight: FontWeight.w700)),
+            );
+          }),
+        ],
+      ),
+    );
   }
 }
 

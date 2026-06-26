@@ -27,6 +27,10 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
   };
   String _gender = 'MALE';
   DateTime? _dob;
+  // Server-side validation error for the phone field (e.g. a 409 duplicate mobile),
+  // surfaced inline under the field in addition to the toast. Cleared on edit.
+  final _phoneFocus = FocusNode();
+  String? _phoneError;
   File? _photo;
   String? _existingPhotoUrl;
   File? _introducerPhoto;
@@ -62,10 +66,13 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
     for (final c in _c.values) {
       c.dispose();
     }
+    _phoneFocus.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
+    // Clear any stale server-side phone error so a corrected duplicate can be re-submitted.
+    _phoneError = null;
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
@@ -105,6 +112,12 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
       }
       if (mounted) context.go('/customers');
     } on ApiException catch (e) {
+      // Duplicate mobile number — surface it inline under the Phone field too, and focus it.
+      if (e.statusCode == 409 && mounted) {
+        setState(() => _phoneError = e.message);
+        _formKey.currentState!.validate();
+        _phoneFocus.requestFocus();
+      }
       showToast(e.message, error: true);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -203,11 +216,13 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
     );
   }
 
-  Widget _text(String key, String label, {bool required = false, TextInputType? keyboard, int maxLines = 1, TextCapitalization textCapitalization = TextCapitalization.none, String? Function(String?)? validator}) {
+  Widget _text(String key, String label, {bool required = false, TextInputType? keyboard, int maxLines = 1, TextCapitalization textCapitalization = TextCapitalization.none, String? Function(String?)? validator, FocusNode? focusNode, ValueChanged<String>? onChanged}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextFormField(
         controller: _c[key],
+        focusNode: focusNode,
+        onChanged: onChanged,
         keyboardType: keyboard,
         maxLines: maxLines,
         textCapitalization: textCapitalization,
@@ -265,10 +280,13 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
                       if (d != null) setState(() => _dob = d);
                     },
                   ),
-                  _text('phone', 'Phone', required: true, keyboard: TextInputType.phone, validator: (v) {
+                  _text('phone', 'Phone', required: true, keyboard: TextInputType.phone,
+                      focusNode: _phoneFocus,
+                      onChanged: (_) { if (_phoneError != null) setState(() => _phoneError = null); },
+                      validator: (v) {
                     if (v == null || v.isEmpty) return 'Required';
                     if (!RegExp(r'^\d{10}$').hasMatch(v)) return 'Must be 10 digits';
-                    return null;
+                    return _phoneError; // server-side duplicate-mobile (409), surfaced inline
                   }),
                   _text('alternatePhone', 'Alt Phone', keyboard: TextInputType.phone, validator: (v) {
                     if (v == null || v.trim().isEmpty) return null;

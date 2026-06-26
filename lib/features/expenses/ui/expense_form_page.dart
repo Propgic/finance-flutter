@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/auth/auth_controller.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../data/expense_repo.dart';
@@ -25,13 +27,39 @@ class _ExpenseFormPageState extends ConsumerState<ExpenseFormPage> {
   bool _saving = false;
   bool _loading = false;
 
+  // Optional chit attribution — only when the org runs chitfunds. Booking an expense
+  // under a chit counts it against that chit's returns (income − expenses).
+  bool _chitEnabled = false;
+  List<Map<String, dynamic>> _chitfunds = [];
+  String? _chitfundId;
+  final _monthNumber = TextEditingController();
+
   bool get isEdit => widget.expenseId != null;
+
+  Map<String, dynamic>? get _selectedChit {
+    if (_chitfundId == null) return null;
+    for (final c in _chitfunds) {
+      if (c['id'].toString() == _chitfundId) return c;
+    }
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
+    _chitEnabled = ref.read(authProvider).org?.features['enableChitfund'] == true;
     _loadCats();
+    if (_chitEnabled) _loadChitfunds();
     if (isEdit) _loadExpense();
+  }
+
+  Future<void> _loadChitfunds() async {
+    try {
+      // Load all (active/upcoming first) so trailing costs on a completed chit can
+      // still be attributed. Mirrors the chit picker in the web expense form.
+      final d = await ref.read(apiClientProvider).get('/chitfunds', query: {'limit': 200});
+      if (mounted) setState(() => _chitfunds = extractList(d).map((e) => Map<String, dynamic>.from(e as Map)).toList());
+    } catch (_) {}
   }
 
   Future<void> _loadCats() async {
@@ -57,6 +85,8 @@ class _ExpenseFormPageState extends ConsumerState<ExpenseFormPage> {
         if (e['expenseDate'] != null) {
           _date = DateTime.tryParse(e['expenseDate'].toString()) ?? DateTime.now();
         }
+        _chitfundId = e['chitfundId']?.toString();
+        if (e['monthNumber'] != null) _monthNumber.text = e['monthNumber'].toString();
       });
     } on ApiException catch (e) {
       showToast(e.message, error: true);
@@ -77,6 +107,12 @@ class _ExpenseFormPageState extends ConsumerState<ExpenseFormPage> {
         if (_reference.text.trim().isNotEmpty) 'paymentReference': _reference.text.trim(),
         if (_description.text.trim().isNotEmpty) 'description': _description.text.trim(),
         'expenseDate': formatInputDate(_date),
+        // Send explicitly (even null) so an edit can clear the chit link; monthNumber
+        // only rides along with a chit.
+        'chitfundId': _chitfundId,
+        'monthNumber': (_chitfundId != null && _monthNumber.text.trim().isNotEmpty)
+            ? int.tryParse(_monthNumber.text.trim())
+            : null,
       };
       if (isEdit) {
         await ref.read(expenseRepoProvider).update(widget.expenseId!, body);
@@ -146,6 +182,44 @@ class _ExpenseFormPageState extends ConsumerState<ExpenseFormPage> {
                       ],
                     ),
                   ),
+                  if (_chitEnabled && _chitfunds.isNotEmpty)
+                    SectionCard(
+                      title: 'Book under Chitfund (optional)',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          DropdownButtonFormField<String?>(
+                            value: _chitfundId,
+                            isExpanded: true,
+                            decoration: const InputDecoration(labelText: 'Chitfund'),
+                            items: [
+                              const DropdownMenuItem<String?>(value: null, child: Text('Not linked to a chit')),
+                              ..._chitfunds.map((c) => DropdownMenuItem<String?>(
+                                    value: c['id'].toString(),
+                                    child: Text('${c['name']} (${c['chitNumber']})', overflow: TextOverflow.ellipsis),
+                                  )),
+                            ],
+                            onChanged: (v) => setState(() => _chitfundId = v),
+                          ),
+                          if (_selectedChit != null) ...[
+                            const SizedBox(height: 10),
+                            TextFormField(
+                              controller: _monthNumber,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                labelText: 'Auction Month (optional)',
+                                hintText: '1 – ${_selectedChit!['durationMonths']}',
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              "Counts against ${_selectedChit!['name']}'s returns (income − expenses) on the chit's page.",
+                              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                   SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _saving ? null : _save, child: Text(_saving ? 'Saving...' : isEdit ? 'Update Expense' : 'Save Expense'))),
                 ],
               ),
