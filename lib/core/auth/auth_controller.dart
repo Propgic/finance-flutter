@@ -190,17 +190,18 @@ class AuthController extends Notifier<AuthState> {
 
   Future<void> updateOrgFeatures(Map<String, bool> features) async {
     if (state.org == null) return;
-    final updated = AuthOrg(
-      id: state.org!.id,
-      slug: state.org!.slug,
-      name: state.org!.name,
-      logo: state.org!.logo,
-      features: {...state.org!.features, ...features},
-      menuOrder: state.org!.menuOrder,
-      allowCollectionEdit: state.org!.allowCollectionEdit,
-      subscriptionStatus: state.org!.subscriptionStatus,
-      renewalDate: state.org!.renewalDate,
-      billingCycle: state.org!.billingCycle,
+    final updated = state.org!.copyWith(features: {...state.org!.features, ...features});
+    await AccountStore.updateActiveProfile(org: updated.toJson());
+    state = state.copyWith(org: updated);
+  }
+
+  // Sync org-level Loan Settings into the cached session after a settings save, so
+  // collection edit gating (receipt page) reflects the change without a re-login.
+  Future<void> updateOrgSettings({bool? allowCollectionEdit, String? verifiedCollectionEditPolicy}) async {
+    if (state.org == null) return;
+    final updated = state.org!.copyWith(
+      allowCollectionEdit: allowCollectionEdit,
+      verifiedCollectionEditPolicy: verifiedCollectionEditPolicy,
     );
     await AccountStore.updateActiveProfile(org: updated.toJson());
     state = state.copyWith(org: updated);

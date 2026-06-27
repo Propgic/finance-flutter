@@ -112,13 +112,18 @@ class _ReceiptPageState extends ConsumerState<ReceiptPage> {
           final role = auth.user?.role;
           final status = collection['verificationStatus']?.toString() ?? 'PENDING';
           // Mirrors the backend. The org master switch must be on for any edit; a verified
-          // collection additionally requires the collections.edit_verified permission.
+          // collection is governed by the org's verifiedCollectionEditPolicy.
           final editingEnabled = auth.org?.allowCollectionEdit == true;
-          final statusEditable = status == 'PENDING' ||
-              (status == 'VERIFIED' && auth.hasPermission('collections.edit_verified'));
-          // Editing requires the collections.edit permission (collections.edit_verified also grants entry).
-          final canEditCollections = auth.hasPermission('collections.edit') ||
-              auth.hasPermission('collections.edit_verified');
+          final verifiedEditPolicy = auth.org?.verifiedCollectionEditPolicy ?? 'WINDOW_24H';
+          final verifiedAt = DateTime.tryParse(collection['verifiedAt']?.toString() ?? '');
+          final withinVerifiedEditWindow = verifiedAt != null &&
+              DateTime.now().difference(verifiedAt.toLocal()) <= const Duration(hours: 24);
+          final verifiedEditable = verifiedEditPolicy == 'ALWAYS' ||
+              (verifiedEditPolicy == 'WINDOW_24H' && withinVerifiedEditWindow);
+          final statusEditable =
+              status == 'PENDING' || (status == 'VERIFIED' && verifiedEditable);
+          // Editing requires the collections.edit permission.
+          final canEditCollections = auth.hasPermission('collections.edit');
           // Field officers may only edit their own collection within 24 hours of recording it.
           final created = DateTime.tryParse(collection['createdAt']?.toString() ?? '');
           final withinFieldOfficerEditWindow =

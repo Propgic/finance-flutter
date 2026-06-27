@@ -52,8 +52,11 @@ class AuthOrg {
   final Map<String, bool> features;
   final List<String>? menuOrder;
   // Master switch for editing collections. Off: collections are locked once recorded.
-  // On: pending editable; verified needs the collections.edit_verified permission.
+  // On: pending editable; verified governed by verifiedCollectionEditPolicy below.
   final bool allowCollectionEdit;
+  // When a VERIFIED collection may still be edited: ALWAYS | WINDOW_24H (up to 24h
+  // after verification) | NEVER.
+  final String verifiedCollectionEditPolicy;
   final String? subscriptionStatus;
   final String? renewalDate;
   final String? billingCycle;
@@ -66,6 +69,7 @@ class AuthOrg {
     required this.features,
     this.menuOrder,
     this.allowCollectionEdit = false,
+    this.verifiedCollectionEditPolicy = 'WINDOW_24H',
     this.subscriptionStatus,
     this.renewalDate,
     this.billingCycle,
@@ -89,6 +93,7 @@ class AuthOrg {
       features: feats,
       menuOrder: menu,
       allowCollectionEdit: j['allowCollectionEdit'] == true,
+      verifiedCollectionEditPolicy: j['verifiedCollectionEditPolicy']?.toString() ?? 'WINDOW_24H',
       subscriptionStatus: j['subscriptionStatus']?.toString(),
       renewalDate: j['renewalDate']?.toString(),
       billingCycle: j['billingCycle']?.toString(),
@@ -103,10 +108,33 @@ class AuthOrg {
         'features': features,
         'menuOrder': menuOrder,
         'allowCollectionEdit': allowCollectionEdit,
+        'verifiedCollectionEditPolicy': verifiedCollectionEditPolicy,
         'subscriptionStatus': subscriptionStatus,
         'renewalDate': renewalDate,
         'billingCycle': billingCycle,
       };
+
+  // Returns a copy with the given fields overridden. Use this instead of rebuilding
+  // AuthOrg by hand so newly added fields are never silently dropped.
+  AuthOrg copyWith({
+    Map<String, bool>? features,
+    List<String>? menuOrder,
+    bool? allowCollectionEdit,
+    String? verifiedCollectionEditPolicy,
+  }) =>
+      AuthOrg(
+        id: id,
+        slug: slug,
+        name: name,
+        logo: logo,
+        features: features ?? this.features,
+        menuOrder: menuOrder ?? this.menuOrder,
+        allowCollectionEdit: allowCollectionEdit ?? this.allowCollectionEdit,
+        verifiedCollectionEditPolicy: verifiedCollectionEditPolicy ?? this.verifiedCollectionEditPolicy,
+        subscriptionStatus: subscriptionStatus,
+        renewalDate: renewalDate,
+        billingCycle: billingCycle,
+      );
 
   bool feature(String key) => features[key] == true;
 }

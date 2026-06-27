@@ -96,6 +96,35 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   ];
   String _loanCustomerFilter = 'ALL';
 
+  // Master switch for editing collections (web: allowCollectionEdit). When off, no
+  // collection can be edited or removed; when on, pending edits are allowed and verified
+  // edits follow _verifiedCollectionEditPolicy below.
+  bool _allowCollectionEdit = false;
+  // When a VERIFIED collection may still be edited (only applies once editing is on).
+  // Backend accepts `verifiedCollectionEditPolicy`.
+  static const _verifiedEditPolicies = <List<String>>[
+    ['ALWAYS', 'Always', 'A verified collection can be edited at any time.'],
+    ['WINDOW_24H', 'Only within 24 hours', 'Editable only within 24 hours of verification.'],
+    ['NEVER', 'Never', 'Once verified, a collection is locked.'],
+  ];
+  String _verifiedCollectionEditPolicy = 'WINDOW_24H';
+  // When true, a PENDING (unverified) collection already lowers the loan's shown balance.
+  bool _includePendingInBalance = false;
+  // When true (default), the customer number shows under the name in listings.
+  bool _showCustomerNumber = true;
+
+  // Per-role visibility of sensitive loan financials (web: Loan Settings → Field
+  // Visibility). KEEP IN SYNC with finance-backend/src/utils/loanVisibility.js. Shape:
+  // { ROLE: { fieldKey: false } } — a field is hidden from a role only when explicitly
+  // false; absent = visible. ORG_ADMIN is never restricted.
+  static const _loanFieldItems = <List<String>>[
+    ['interestRate', 'Interest Rate'],
+    ['totalInterest', 'Total / Upfront Interest'],
+    ['processingFee', 'Processing Fee'],
+    ['totalPayable', 'Total Payable / Net Disbursed'],
+  ];
+  Map<String, dynamic> _loanFieldVisibility = {};
+
   // Collection defaults (web sends flat `defaultCollectionDays` (List<int>) + `defaultWeeklyDay` (int)).
   // Day values: 0=Sun .. 6=Sat (matches web).
   static const _weekDays = <List<dynamic>>[
@@ -173,6 +202,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         _gracePeriodDays.text = s['gracePeriodDays']?.toString() ?? '';
         final filter = s['loanCustomerFilter']?.toString();
         _loanCustomerFilter = _customerFilters.any((c) => c[0] == filter) ? filter! : 'ALL';
+        final vcep = s['verifiedCollectionEditPolicy']?.toString();
+        _verifiedCollectionEditPolicy = _verifiedEditPolicies.any((p) => p[0] == vcep) ? vcep! : 'WINDOW_24H';
+        _allowCollectionEdit = s['allowCollectionEdit'] == true;
+        _includePendingInBalance = s['includePendingInBalance'] == true;
+        _showCustomerNumber = s['showCustomerNumber'] != false;
+        final lfv = s['loanFieldVisibility'];
+        if (lfv is Map) _loanFieldVisibility = Map<String, dynamic>.from(lfv);
         final days = s['defaultCollectionDays'];
         if (days is List) {
           _collectionDays = days.map((e) => (e as num).toInt()).toSet();
@@ -226,6 +262,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         if (_gracePeriodDays.text.trim().isNotEmpty) 'gracePeriodDays': int.tryParse(_gracePeriodDays.text.trim()),
         // Loan customer filter
         'loanCustomerFilter': _loanCustomerFilter,
+        // Collection edit controls
+        'allowCollectionEdit': _allowCollectionEdit,
+        'verifiedCollectionEditPolicy': _verifiedCollectionEditPolicy,
+        'includePendingInBalance': _includePendingInBalance,
+        'showCustomerNumber': _showCustomerNumber,
+        // Per-role loan field visibility (nested, like web)
+        'loanFieldVisibility': _loanFieldVisibility,
         // Collection defaults (flat keys, like web)
         'defaultCollectionDays': (_collectionDays.toList()..sort()),
         'defaultWeeklyDay': _weeklyDay,
@@ -240,6 +283,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         final form = FormData.fromMap({'logo': await MultipartFile.fromFile(_logoFile!.path)});
         await api.post('/settings/logo', data: form);
       }
+      // Sync collection-edit settings into the cached session so the receipt Edit
+      // button reflects them immediately (mirrors the web's updateOrg).
+      await ref.read(authProvider.notifier).updateOrgSettings(
+            allowCollectionEdit: _allowCollectionEdit,
+            verifiedCollectionEditPolicy: _verifiedCollectionEditPolicy,
+          );
       showToast('Settings saved');
       _load();
     } on ApiException catch (e) {
@@ -374,6 +423,165 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+  // Loan Settings card: collection edit master switch + verified-edit policy + the
+  // pending-in-balance and customer-number display toggles. Mirrors the web Loan Settings.
+  Widget _loanSettingsSection() {
+    return SectionCard(
+      title: 'Loan Settings',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SwitchListTile(
+            title: const Text('Allow editing collections'),
+            subtitle: const Text(
+                'Off: collections are locked once recorded. On: pending collections can be corrected; verified ones follow the policy below.'),
+            contentPadding: EdgeInsets.zero,
+            value: _allowCollectionEdit,
+            onChanged: (v) => setState(() => _allowCollectionEdit = v),
+          ),
+          Opacity(
+            opacity: _allowCollectionEdit ? 1 : 0.4,
+            child: IgnorePointer(
+              ignoring: !_allowCollectionEdit,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6, bottom: 2),
+                    child: Text('After verification, allow edits',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  ),
+                  ..._verifiedEditPolicies.map((p) {
+                    final selected = _verifiedCollectionEditPolicy == p[0];
+                    return InkWell(
+                      onTap: () => setState(() => _verifiedCollectionEditPolicy = p[0]),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                              color: selected ? AppColors.primary : AppColors.textSecondary,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(p[1]),
+                                  Text(p[2], style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+          const Divider(),
+          SwitchListTile(
+            title: const Text('Count pending collections in balance'),
+            subtitle: const Text(
+                'On: a payment lowers the loan balance as soon as it is recorded, before verification.'),
+            contentPadding: EdgeInsets.zero,
+            value: _includePendingInBalance,
+            onChanged: (v) => setState(() => _includePendingInBalance = v),
+          ),
+          SwitchListTile(
+            title: const Text('Show customer number in listings'),
+            subtitle: const Text('Show the customer number under the name on lists and collection search.'),
+            contentPadding: EdgeInsets.zero,
+            value: _showCustomerNumber,
+            onChanged: (v) => setState(() => _showCustomerNumber = v),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Effective visibility of a loan financial field for a role: explicit boolean if set,
+  // else visible. ORG_ADMIN always sees everything. Mirrors loanVisibility.js.
+  bool _isFieldVisible(String role, String key) {
+    if (role == 'ORG_ADMIN') return true;
+    final explicit = (_loanFieldVisibility[role] as Map?)?[key];
+    return explicit is bool ? explicit : true;
+  }
+
+  void _toggleFieldVisible(String role, String key) {
+    setState(() {
+      final next = Map<String, dynamic>.from(_loanFieldVisibility);
+      final roleMap = Map<String, dynamic>.from(next[role] as Map? ?? const {});
+      roleMap[key] = !_isFieldVisible(role, key);
+      next[role] = roleMap;
+      _loanFieldVisibility = next;
+    });
+  }
+
+  // Per-role matrix controlling which sensitive loan financials each role can see.
+  // Saved with the main Save button. Mirrors the web Loan Settings → Field Visibility.
+  Widget _fieldVisibilitySection() {
+    const labelW = 150.0;
+    const cellW = 58.0;
+    return SectionCard(
+      title: 'Loan Field Visibility',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Choose which sensitive loan figures each role can see. Untick a box to hide that '
+            'field from the role — it is also stripped from API responses. Organisation admins '
+            'always see everything. Changes apply on the user’s next login.',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const SizedBox(width: labelW),
+                    ..._uiVisibilityRoles.map((r) => SizedBox(
+                          width: cellW,
+                          child: Text(_uiRoleLabels[r] ?? r,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                        )),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                ..._loanFieldItems.map((it) {
+                  final key = it[0];
+                  return Row(
+                    children: [
+                      SizedBox(width: labelW, child: Text(it[1], style: const TextStyle(fontSize: 12))),
+                      ..._uiVisibilityRoles.map((r) => SizedBox(
+                            width: cellW,
+                            height: 40,
+                            child: Checkbox(
+                              value: _isFieldVisible(r, key),
+                              visualDensity: VisualDensity.compact,
+                              onChanged: (_) => _toggleFieldVisible(r, key),
+                            ),
+                          )),
+                    ],
+                  );
+                }),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -401,6 +609,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Widget _buildBody(Map<String, dynamic> s, Map<String, dynamic> f) {
+    // Role gating mirrors the web Settings config: changing settings requires ORG_ADMIN
+    // (PUT /settings is ORG_ADMIN-only on the backend); the subscription view is for
+    // ORG_ADMIN + MANAGER. Non-admins see the values read-only.
+    final role = ref.read(authProvider).user?.role;
+    final isAdmin = role == 'ORG_ADMIN';
+    final isAdminOrManager = isAdmin || role == 'MANAGER';
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
@@ -500,6 +714,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ],
           ),
         ),
+        _loanSettingsSection(),
         SectionCard(
           title: 'Collection Defaults',
           child: Column(
@@ -620,17 +835,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ],
           ),
         ),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _saving ? null : _save,
-            icon: const Icon(Icons.save),
-            label: Text(_saving ? 'Saving...' : 'Save Settings'),
+        // Per-role loan field visibility (ORG_ADMIN only). Saved with the main button below.
+        if (isAdmin) _fieldVisibilitySection(),
+        // Saving any of these settings requires ORG_ADMIN (backend gates PUT /settings),
+        // so the save is admin-only; other roles see the values read-only.
+        if (isAdmin)
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: const Icon(Icons.save),
+              label: Text(_saving ? 'Saving...' : 'Save Settings'),
+            ),
+          )
+        else
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'Only organisation admins can change these settings — shown here read-only for your role.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
           ),
-        ),
         const SizedBox(height: 16),
         // Per-role chitfund/dashboard visibility editor (ORG_ADMIN only).
-        if (ref.read(authProvider).user?.role == 'ORG_ADMIN') _visibilitySection(),
+        if (isAdmin) _visibilitySection(),
         SectionCard(
           title: 'Features',
           child: Column(
@@ -640,14 +868,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 subtitle: const Text('Allow customers to login via self-service portal'),
                 contentPadding: EdgeInsets.zero,
                 value: f['enableCustomerPortal'] == true,
-                onChanged: (v) => _toggleFeature('enableCustomerPortal', v),
+                onChanged: isAdmin ? (v) => _toggleFeature('enableCustomerPortal', v) : null,
               ),
               SwitchListTile(
                 title: const Text('Edit / Correct Loan Terms'),
                 subtitle: const Text('Allow admins to correct a loan\'s terms and rebuild its EMI schedule after disbursement'),
                 contentPadding: EdgeInsets.zero,
                 value: f['enableLoanCorrection'] == true,
-                onChanged: (v) => _toggleFeature('enableLoanCorrection', v),
+                onChanged: isAdmin ? (v) => _toggleFeature('enableLoanCorrection', v) : null,
+              ),
+              SwitchListTile(
+                title: const Text('Expenses'),
+                subtitle: const Text('Track salary payments and operational expenses'),
+                contentPadding: EdgeInsets.zero,
+                value: f['enableExpenses'] == true,
+                onChanged: isAdmin ? (v) => _toggleFeature('enableExpenses', v) : null,
+              ),
+              SwitchListTile(
+                title: const Text('Consolidated Balance'),
+                subtitle: const Text('View customer consolidated balance sheet and manage settlement'),
+                contentPadding: EdgeInsets.zero,
+                value: f['enableConsolidatedBalance'] == true,
+                onChanged: isAdmin ? (v) => _toggleFeature('enableConsolidatedBalance', v) : null,
               ),
               const Divider(),
               _featureReadOnly('Loans', f['enableLoans'] == true),
@@ -664,7 +906,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ],
           ),
         ),
-        if (_subscription != null) _buildSubscription(_subscription!),
+        if (isAdminOrManager && _subscription != null) _buildSubscription(_subscription!),
       ],
     );
   }
