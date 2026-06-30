@@ -79,13 +79,19 @@ class DashboardPage extends ConsumerWidget {
       padding: const EdgeInsets.all(12),
       children: [
         if (isFieldOfficer) ...[
-          _fieldOfficerStats(context, d),
+          // Loan/cash daily snapshot — hidden when the loan module is off (mirrors web's
+          // `showLoans` gate). For chit-only orgs the Chit Funds section owns the cash
+          // position, so these loan-centric cards would just show empty/duplicate figures.
+          if (features['enableLoans'] == true) _fieldOfficerStats(context, d),
           _pendingVerificationList(d),
           _overdueLoansList(context, d),
           _dailyCollectionChart(d),
           if (chitEnabled) _chitfundSection(context, d, auth, features),
         ] else ...[
-          _adminTopCards(context, d),
+          // Top gradient stat cards (Today's Loans / Total Overdue / Closing Balance) are
+          // a loan/cash snapshot — hidden when the loan module is off (mirrors web). The
+          // Chit Funds section below owns the org-cash position for chit-only orgs.
+          if (features['enableLoans'] == true) _adminTopCards(context, d),
           if (!chitOwnsDayCash) _daySummaryCard(d),
           if ((features['enableLoans'] == true) && role == 'ORG_ADMIN') _outstandingCard(d),
           if (!chitOwnsDayCash) _dayReportCard(d),
